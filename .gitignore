@@ -7,3 +7,7 @@ local.properties
 *.jks
 *.keystore
 .DS_Store
+labelserver/config.ini
+labelserver/pdf/
+labelserver/venv/
+__pycache__/

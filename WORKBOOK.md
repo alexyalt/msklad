@@ -19,3 +19,5 @@
 
 - Добавлен `.github/workflows/android-ci.yml`: сборка `assembleDebug` и загрузка APK. Пока Gradle-проекта нет (`gradlew` отсутствует), шаги сборки пропускаются, чтобы workflow не падал.
 - Осталось: добавить Gradle-проект Android (`gradlew`, `app/`), затем проверить первый запуск в Actions.
+- Run `Android CI` на `b614320`: статус success (https://github.com/alexyalt/msklad/actions/runs/44786193453). Шаги сборки пропускаются по условию, пока нет `gradlew`; пошагово это не проверял.
+- Создан GitHub Environment `development` через API (PUT /environments/development). Правил ветки пока нет.

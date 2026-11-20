@@ -21,11 +21,9 @@ data class MoveInfo(
 )
 
 data class AddResult(
-    val productName: String,
     val quantity: Double,
-    val sourceStock: Double,
-    val targetStockBefore: Double,
-    val targetStockAfter: Double,
+    val sourceAfter: Double,
+    val targetAfter: Double,
 )
 
 class MoveRepository(private val api: MoySkladApi) {
@@ -73,11 +71,9 @@ class MoveRepository(private val api: MoySkladApi) {
         api.updateMove(move.id, JsonObject().apply { add("positions", positions) })
 
         AddResult(
-            productName = product.str("name").orEmpty(),
             quantity = quantity,
-            sourceStock = sourceStock - quantity,
-            targetStockBefore = targetStock,
-            targetStockAfter = targetStock + quantity,
+            sourceAfter = sourceStock - quantity,
+            targetAfter = targetStock + quantity,
         )
     }
 

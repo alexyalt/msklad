@@ -4,7 +4,10 @@ import android.app.Application
 import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -23,12 +26,17 @@ sealed interface ResultState {
     data class Error(val message: String) : ResultState
 }
 
+enum class Highlight { NONE, SENDING, SUCCESS, ERROR }
+
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private lateinit var move: MoveInfo
     private lateinit var repository: MoveRepository
 
     private val _result = MutableStateFlow<ResultState>(ResultState.Idle)
     val result: StateFlow<ResultState> = _result
+
+    private val _highlight = MutableStateFlow(Highlight.NONE)
+    val highlight: StateFlow<Highlight> = _highlight
 
     private val _scannerOn = MutableStateFlow(true)
     val scannerOn: StateFlow<Boolean> = _scannerOn
@@ -38,6 +46,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private var lastScanCode: String? = null
     private var lastScanAt = 0L
+    private var resetJob: Job? = null
 
     fun init(move: MoveInfo) {
         if (::move.isInitialized) return
@@ -65,20 +74,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val quantity = parseQuantity(quantityText)
             ?: return fail("Некорректное количество: нужно число больше нуля")
 
+        resetJob?.cancel()
         _result.value = ResultState.Loading
+        _highlight.value = Highlight.SENDING
         viewModelScope.launch {
             try {
                 val added = repository.addItem(move, trimmed, quantity)
-                _result.value = ResultState.Success(added)
+                show(ResultState.Success(added), Highlight.SUCCESS)
                 _outcomes.send(true)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: ApiException) {
                 fail(e.message ?: "Неизвестная ошибка")
+            } catch (e: Exception) {
+                // Без этого неожиданный ответ сервера оставил бы экран жёлтым навсегда.
+                fail("Неожиданная ошибка: ${e.message ?: e::class.java.simpleName}")
             }
         }
     }
 
+    private fun show(state: ResultState, highlight: Highlight) {
+        _result.value = state
+        _highlight.value = highlight
+        resetJob?.cancel()
+        resetJob = viewModelScope.launch {
+            delay(HIGHLIGHT_MS)
+            _highlight.value = Highlight.NONE
+        }
+    }
+
     private fun fail(message: String) {
-        _result.value = ResultState.Error(message)
+        show(ResultState.Error(message), Highlight.ERROR)
         _outcomes.trySend(false)
     }
 
@@ -91,5 +117,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private companion object {
         const val DEBOUNCE_MS = 1500L
+        const val HIGHLIGHT_MS = 3000L
     }
 }

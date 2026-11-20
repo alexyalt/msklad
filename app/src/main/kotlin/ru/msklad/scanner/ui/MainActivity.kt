@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -26,12 +27,10 @@ import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import kotlinx.coroutines.launch
 import ru.msklad.scanner.R
-import ru.msklad.scanner.data.AddResult
 import ru.msklad.scanner.data.MoveInfo
 import ru.msklad.scanner.data.StoreRef
+import ru.msklad.scanner.data.formatQuantity
 import ru.msklad.scanner.databinding.ActivityMainBinding
-import java.math.BigDecimal
-import java.math.RoundingMode
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -83,11 +82,8 @@ class MainActivity : AppCompatActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { viewModel.scannerOn.collect { applyScannerState(it) } }
                 launch { viewModel.result.collect { render(it) } }
-                launch {
-                    viewModel.outcomes.collect { success ->
-                        if (success) sounds.success() else sounds.error()
-                    }
-                }
+                launch { viewModel.highlight.collect { applyHighlight(it) } }
+                launch { viewModel.outcomes.collect { onOutcome(it) } }
             }
         }
     }
@@ -177,55 +173,56 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun render(state: ResultState) {
-        val resultCard = binding.resultZone
-        binding.sendButton.isEnabled = state != ResultState.Loading
-        binding.progress.visibility = if (state == ResultState.Loading) View.VISIBLE else View.GONE
-        when (state) {
-            ResultState.Idle -> {
-                resultCard.setBackgroundColor(color(R.color.neutral_bg))
-                binding.resultTitle.setTextColor(color(R.color.black))
-                binding.resultTitle.setText(R.string.result_idle)
-                binding.resultProduct.text = ""
-                binding.resultSource.text = ""
-                binding.resultTarget.text = ""
-            }
-            ResultState.Loading -> {
-                resultCard.setBackgroundColor(color(R.color.neutral_bg))
-                binding.resultTitle.setTextColor(color(R.color.black))
-                binding.resultTitle.setText(R.string.result_loading)
-            }
-            is ResultState.Success -> {
-                val r = state.result
-                resultCard.setBackgroundColor(color(R.color.success_green_bg))
-                binding.resultTitle.setTextColor(color(R.color.success_green))
-                binding.resultTitle.setText(R.string.result_success)
-                binding.resultProduct.text = r.productName
-                binding.resultSource.text = getString(R.string.result_source, move.source.name, fmt(r.sourceStock))
-                binding.resultTarget.text = getString(
-                    R.string.result_target, move.target.name, fmt(r.targetStockBefore), fmt(r.targetStockAfter),
-                )
-                binding.codeEdit.setText("")
-                binding.quantityEdit.setText("1")
-                binding.codeEdit.requestFocus()
-                Snackbar.make(binding.root, getString(R.string.snack_added, r.productName, fmt(r.quantity)), Snackbar.LENGTH_SHORT).show()
-            }
-            is ResultState.Error -> {
-                resultCard.setBackgroundColor(color(R.color.error_red_bg))
-                binding.resultTitle.setTextColor(color(R.color.error_red))
-                binding.resultTitle.setText(R.string.result_error)
-                binding.resultProduct.text = state.message
-                binding.resultSource.text = ""
-                binding.resultTarget.text = ""
-                Snackbar.make(binding.root, state.message, Snackbar.LENGTH_LONG).show()
+    private fun onOutcome(success: Boolean) {
+        if (success) {
+            sounds.success()
+            binding.codeEdit.setText("")
+            binding.quantityEdit.setText("")
+            binding.codeEdit.requestFocus()
+        } else {
+            sounds.error()
+            (viewModel.result.value as? ResultState.Error)?.let {
+                Snackbar.make(binding.root, it.message, Snackbar.LENGTH_LONG).show()
             }
         }
     }
 
-    private fun color(id: Int) = ContextCompat.getColor(this, id)
+    private fun applyHighlight(highlight: Highlight) {
+        val color = when (highlight) {
+            Highlight.NONE -> R.color.bg_idle
+            Highlight.SENDING -> R.color.bg_sending
+            Highlight.SUCCESS -> R.color.bg_success
+            Highlight.ERROR -> R.color.bg_error
+        }
+        binding.root.setBackgroundColor(ContextCompat.getColor(this, color))
+    }
 
-    private fun fmt(value: Double): String =
-        BigDecimal.valueOf(value).setScale(3, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
+    private fun render(state: ResultState) {
+        val loading = state == ResultState.Loading
+        binding.sendButton.isEnabled = !loading
+        binding.progress.visibility = if (loading) View.VISIBLE else View.GONE
+
+        val line = (state as? ResultState.Success)?.result?.let {
+            getString(
+                R.string.result_line,
+                formatQuantity(it.sourceAfter),
+                formatQuantity(it.quantity),
+                formatQuantity(it.targetAfter),
+            )
+        }
+        val message = when (state) {
+            ResultState.Idle -> getString(R.string.result_idle)
+            is ResultState.Error -> state.message
+            else -> null
+        }
+        setTextOrHide(binding.resultLine, line)
+        setTextOrHide(binding.resultMessage, message)
+    }
+
+    private fun setTextOrHide(view: TextView, text: String?) {
+        view.text = text.orEmpty()
+        view.visibility = if (text.isNullOrEmpty()) View.GONE else View.VISIBLE
+    }
 
     companion object {
         private const val EXTRA_ID = "id"

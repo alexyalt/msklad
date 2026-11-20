@@ -68,6 +68,7 @@ class MainActivity : AppCompatActivity() {
         binding.moveRoute.text = getString(R.string.move_route, move.source.name, move.target.name)
 
         binding.scannerToggle.setOnClickListener { toggleScanner() }
+        binding.undoButton.setOnClickListener { viewModel.undo() }
         binding.sendButton.setOnClickListener { submitManual() }
         binding.codeEdit.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND) {
@@ -83,7 +84,9 @@ class MainActivity : AppCompatActivity() {
                 launch { viewModel.scannerOn.collect { applyScannerState(it) } }
                 launch { viewModel.result.collect { render(it) } }
                 launch { viewModel.highlight.collect { applyHighlight(it) } }
-                launch { viewModel.outcomes.collect { onOutcome(it) } }
+                launch { viewModel.canUndo.collect { binding.undoButton.visibility = if (it) View.VISIBLE else View.GONE } }
+                launch { viewModel.sounds.collect { onSound(it) } }
+                launch { viewModel.clearInput.collect { clearInput() } }
             }
         }
     }
@@ -173,18 +176,19 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun onOutcome(success: Boolean) {
-        if (success) {
-            sounds.success()
-            binding.codeEdit.setText("")
-            binding.quantityEdit.setText("")
-            binding.codeEdit.requestFocus()
-        } else {
-            sounds.error()
+    private fun onSound(sound: Sound) {
+        sounds.play(sound)
+        if (sound == Sound.ERROR) {
             (viewModel.result.value as? ResultState.Error)?.let {
                 Snackbar.make(binding.root, it.message, Snackbar.LENGTH_LONG).show()
             }
         }
+    }
+
+    private fun clearInput() {
+        binding.codeEdit.setText("")
+        binding.quantityEdit.setText("")
+        binding.codeEdit.requestFocus()
     }
 
     private fun applyHighlight(highlight: Highlight) {
@@ -202,7 +206,10 @@ class MainActivity : AppCompatActivity() {
         binding.sendButton.isEnabled = !loading
         binding.progress.visibility = if (loading) View.VISIBLE else View.GONE
 
-        val line = (state as? ResultState.Success)?.result?.let {
+        val added = (state as? ResultState.Success)?.result
+        val undone = (state as? ResultState.Undone)?.result
+        val product = (added ?: undone)?.let { getString(R.string.product_line, it.productName, it.productCode) }
+        val line = added?.let {
             getString(
                 R.string.result_line,
                 formatQuantity(it.sourceAfter),
@@ -213,8 +220,11 @@ class MainActivity : AppCompatActivity() {
         val message = when (state) {
             ResultState.Idle -> getString(R.string.result_idle)
             is ResultState.Error -> state.message
+            is ResultState.Undone ->
+                getString(R.string.undone_message, state.result.productName, formatQuantity(state.result.quantity))
             else -> null
         }
+        setTextOrHide(binding.resultProduct, product)
         setTextOrHide(binding.resultLine, line)
         setTextOrHide(binding.resultMessage, message)
     }

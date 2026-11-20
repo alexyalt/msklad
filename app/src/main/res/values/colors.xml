@@ -2,10 +2,11 @@
 <resources>
     <color name="error_red">#C62828</color>
     <color name="bg_idle">#FFFFFFFF</color>
-    <color name="bg_sending">#FFFFEB3B</color>
-    <color name="bg_success">#FF66BB6A</color>
-    <color name="bg_error">#FFEF5350</color>
+    <color name="bg_sending">#FFFFF59D</color>
+    <color name="bg_success">#FFA5D6A7</color>
+    <color name="bg_error">#FFEF9A9A</color>
     <color name="text_primary">#FF212121</color>
+    <color name="text_secondary">#FF424242</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 </resources>

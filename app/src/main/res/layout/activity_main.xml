@@ -8,21 +8,36 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
         android:paddingHorizontal="16dp"
         android:paddingTop="8dp">
 
-        <TextView
-            android:id="@+id/moveTitle"
-            android:layout_width="match_parent"
+        <LinearLayout
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:textAppearance="?attr/textAppearanceTitleMedium" />
+            android:layout_weight="1"
+            android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/moveRoute"
-            android:layout_width="match_parent"
+            <TextView
+                android:id="@+id/moveTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+            <TextView
+                android:id="@+id/moveRoute"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textAppearance="?attr/textAppearanceBodySmall" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/labelButton"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textAppearance="?attr/textAppearanceBodySmall" />
+            android:text="@string/label_button"
+            android:visibility="gone" />
     </LinearLayout>
 
     <FrameLayout
@@ -122,6 +137,16 @@
             android:visibility="gone" />
 
         <TextView
+            android:id="@+id/resultProduct"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:gravity="center"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/resultLine"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -138,5 +163,14 @@
             android:gravity="center"
             android:textColor="@color/text_primary"
             android:textSize="20sp" />
+
+        <Button
+            android:id="@+id/undoButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/undo"
+            android:textColor="@color/error_red"
+            android:visibility="gone" />
     </LinearLayout>
 </LinearLayout>

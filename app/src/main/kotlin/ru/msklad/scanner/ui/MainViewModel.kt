@@ -23,10 +23,13 @@ sealed interface ResultState {
     data object Idle : ResultState
     data object Loading : ResultState
     data class Success(val result: AddResult) : ResultState
+    data class Undone(val result: AddResult) : ResultState
     data class Error(val message: String) : ResultState
 }
 
 enum class Highlight { NONE, SENDING, SUCCESS, ERROR }
+
+enum class Sound { SCAN, SUCCESS, ERROR }
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private lateinit var move: MoveInfo
@@ -41,9 +44,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _scannerOn = MutableStateFlow(true)
     val scannerOn: StateFlow<Boolean> = _scannerOn
 
-    private val _outcomes = Channel<Boolean>(Channel.BUFFERED)
-    val outcomes = _outcomes.receiveAsFlow()
+    private val _canUndo = MutableStateFlow(false)
+    val canUndo: StateFlow<Boolean> = _canUndo
 
+    private val _sounds = Channel<Sound>(Channel.BUFFERED)
+    val sounds = _sounds.receiveAsFlow()
+
+    private val _clearInput = Channel<Unit>(Channel.BUFFERED)
+    val clearInput = _clearInput.receiveAsFlow()
+
+    private var lastAdded: AddResult? = null
     private var lastScanCode: String? = null
     private var lastScanAt = 0L
     private var resetJob: Job? = null
@@ -63,6 +73,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (code == lastScanCode && now - lastScanAt < DEBOUNCE_MS) return false
         lastScanCode = code
         lastScanAt = now
+        _sounds.trySend(Sound.SCAN)
         submit(code, quantityText)
         return true
     }
@@ -74,23 +85,54 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val quantity = parseQuantity(quantityText)
             ?: return fail("Некорректное количество: нужно число больше нуля")
 
-        resetJob?.cancel()
-        _result.value = ResultState.Loading
-        _highlight.value = Highlight.SENDING
+        lastAdded = null
+        _canUndo.value = false
+        startSending()
         viewModelScope.launch {
             try {
                 val added = repository.addItem(move, trimmed, quantity)
+                lastAdded = added
+                _canUndo.value = true
                 show(ResultState.Success(added), Highlight.SUCCESS)
-                _outcomes.send(true)
+                _sounds.send(Sound.SUCCESS)
+                _clearInput.send(Unit)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException) {
                 fail(e.message ?: "Неизвестная ошибка")
             } catch (e: Exception) {
-                // Без этого неожиданный ответ сервера оставил бы экран жёлтым навсегда.
                 fail("Неожиданная ошибка: ${e.message ?: e::class.java.simpleName}")
             }
         }
+    }
+
+    fun undo() {
+        val added = lastAdded ?: return
+        if (_result.value == ResultState.Loading) return
+        _canUndo.value = false
+        startSending()
+        viewModelScope.launch {
+            try {
+                repository.undoAdd(move, added)
+                lastAdded = null
+                show(ResultState.Undone(added), Highlight.SUCCESS)
+                _sounds.send(Sound.SUCCESS)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                _canUndo.value = true
+                fail(e.message ?: "Неизвестная ошибка")
+            } catch (e: Exception) {
+                _canUndo.value = true
+                fail("Неожиданная ошибка: ${e.message ?: e::class.java.simpleName}")
+            }
+        }
+    }
+
+    private fun startSending() {
+        resetJob?.cancel()
+        _result.value = ResultState.Loading
+        _highlight.value = Highlight.SENDING
     }
 
     private fun show(state: ResultState, highlight: Highlight) {
@@ -105,7 +147,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun fail(message: String) {
         show(ResultState.Error(message), Highlight.ERROR)
-        _outcomes.trySend(false)
+        _sounds.trySend(Sound.ERROR)
     }
 
     private fun parseQuantity(text: String): Double? {

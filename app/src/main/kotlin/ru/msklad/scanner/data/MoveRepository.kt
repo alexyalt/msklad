@@ -21,10 +21,15 @@ data class MoveInfo(
 )
 
 data class AddResult(
+    val productName: String,
+    val productCode: String,
+    val productHref: String,
     val quantity: Double,
     val sourceAfter: Double,
     val targetAfter: Double,
 )
+
+data class ProductInfo(val name: String, val code: String)
 
 class MoveRepository(private val api: MoySkladApi) {
 
@@ -71,10 +76,37 @@ class MoveRepository(private val api: MoySkladApi) {
         api.updateMove(move.id, JsonObject().apply { add("positions", positions) })
 
         AddResult(
+            productName = product.str("name").orEmpty(),
+            productCode = product.str("code").orEmpty(),
+            productHref = productHref,
             quantity = quantity,
             sourceAfter = sourceStock - quantity,
             targetAfter = targetStock + quantity,
         )
+    }
+
+    suspend fun lookupProduct(code: String): ProductInfo = apiCall {
+        val product = findProduct(code.trim())
+        ProductInfo(product.str("name").orEmpty(), product.str("code").orEmpty())
+    }
+
+    suspend fun undoAdd(move: MoveInfo, added: AddResult) = apiCall {
+        val doc = api.move(move.id, "positions")
+        val positions = JsonArray()
+        var found = false
+        for (position in doc.obj("positions")?.rows().orEmpty()) {
+            if (!found && position.obj("assortment")?.href() == added.productHref) {
+                found = true
+                val left = (position.get("quantity")?.asDouble ?: 0.0) - added.quantity
+                if (left > EPSILON) {
+                    positions.add(position.deepCopy().apply { addProperty("quantity", left) })
+                }
+            } else {
+                positions.add(position.deepCopy())
+            }
+        }
+        if (!found) throw ApiException("Позиции «${added.productName}» уже нет в документе, отменять нечего")
+        api.updateMove(move.id, JsonObject().apply { add("positions", positions) })
     }
 
     private suspend fun findProduct(code: String): JsonObject {

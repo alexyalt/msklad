@@ -5,4 +5,6 @@
     <color name="success_green_bg">#E8F5E9</color>
     <color name="error_red_bg">#FFEBEE</color>
     <color name="neutral_bg">#F5F5F5</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
 </resources>

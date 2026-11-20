@@ -10,4 +10,19 @@
     <string name="error_required">Обязательное поле</string>
     <string name="move_title">Перемещение № %1$s</string>
     <string name="move_route">Откуда: %1$s\nКуда: %2$s</string>
+    <string name="scanner_on">Включить сканер</string>
+    <string name="scanner_off">Отключить сканер</string>
+    <string name="scanner_is_off">Сканер выключен</string>
+    <string name="camera_denied">Нет доступа к камере. Можно вводить код вручную.</string>
+    <string name="camera_failed">Не удалось запустить камеру</string>
+    <string name="code_hint">Код или штрихкод товара</string>
+    <string name="quantity_hint">Кол-во</string>
+    <string name="send">Отправить</string>
+    <string name="result_idle">Отсканируйте или введите код товара</string>
+    <string name="result_loading">Отправка запроса…</string>
+    <string name="result_success">Добавлено в перемещение</string>
+    <string name="result_error">Ошибка</string>
+    <string name="result_source">Склад-источник «%1$s»: остаток %2$s</string>
+    <string name="result_target">Склад-получатель «%1$s»: было %2$s, стало %3$s</string>
+    <string name="snack_added">Добавлено: %1$s × %2$s</string>
 </resources>

@@ -20,3 +20,9 @@ Android-приложение (Kotlin) для наполнения готовог
 ```
 
 APK: `app/build/outputs/apk/debug/app-debug.apk`. В GitHub Actions (workflow `Android CI`) APK публикуется как артефакт `msklad-debug-apk`.
+
+## Скачать APK
+
+После каждого push в `main` GitHub Actions собирает приложение и публикует файл `msklad-debug.apk` в релиз `latest`: https://github.com/alexyalt/msklad/releases/tag/latest
+
+Скачайте файл на телефон и установите, разрешив установку из неизвестных источников. APK подписан отладочным ключом, предназначен для тестирования. Файл также доступен как артефакт `msklad-debug-apk` на странице запуска Actions (хранится 14 дней).

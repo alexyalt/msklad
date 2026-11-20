@@ -11,9 +11,8 @@ interface MoySkladApi {
 
     @GET("entity/assortment")
     suspend fun assortment(
-        @Query("filter") filter: String? = null,
-        @Query("search") search: String? = null,
-        @Query("limit") limit: Int = 5,
+        @Query("filter") filter: String,
+        @Query("limit") limit: Int = 1,
     ): JsonObject
 
     @GET("entity/move")

@@ -58,32 +58,34 @@ class MoveRepository(private val api: MoySkladApi) {
         }
         val productHref = product.href() ?: throw ApiException("У товара нет ссылки meta")
 
-        val sourceBefore = stock(type, productHref, move.source.href)
-        val targetBefore = stock(type, productHref, move.target.href)
-
         val doc = api.move(move.id, "positions")
+        val applied = doc.get("applicable")?.takeIf { it.isJsonPrimitive }?.asBoolean ?: false
+        // В проведённом перемещении существующие позиции уже учтены в остатках, в непроведённом нет.
+        val notYetInStock = if (applied) 0.0 else quantityInDocument(doc, productHref)
+
+        val sourceStock = stock(type, productHref, move.source.href) - notYetInStock
+        if (quantity > sourceStock + EPSILON) {
+            throw ApiException("Недостаточно товаров (на складе: ${formatQuantity(maxOf(sourceStock, 0.0))})")
+        }
+        val targetStock = stock(type, productHref, move.target.href) + notYetInStock
+
         val positions = mergePosition(doc, product, productHref, quantity)
         api.updateMove(move.id, JsonObject().apply { add("positions", positions) })
 
         AddResult(
             productName = product.str("name").orEmpty(),
             quantity = quantity,
-            sourceStock = sourceBefore - quantity,
-            targetStockBefore = targetBefore,
-            targetStockAfter = targetBefore + quantity,
+            sourceStock = sourceStock - quantity,
+            targetStockBefore = targetStock,
+            targetStockAfter = targetStock + quantity,
         )
     }
 
     private suspend fun findProduct(code: String): JsonObject {
-        // Порядок: вариант из ТЗ, затем документированный параметр search, затем фильтр по штрихкоду.
-        val attempts = listOf<suspend () -> JsonObject>(
-            { api.assortment(filter = "search=$code") },
-            { api.assortment(search = code) },
-            { api.assortment(filter = "barcode=$code") },
-        )
-        for (attempt in attempts) {
+        // Только точные фильтры: параметр search отдаёт частичные совпадения (или все товары) и приводит к добавлению чужого товара.
+        for (field in SEARCH_FIELDS) {
             val row = try {
-                attempt().rows().firstOrNull()
+                api.assortment(filter = "$field=$code").rows().firstOrNull()
             } catch (e: retrofit2.HttpException) {
                 if (e.code() == 400) null else throw e
             }
@@ -102,6 +104,11 @@ class MoveRepository(private val api: MoySkladApi) {
             row.get("stock")?.takeIf { it.isJsonPrimitive }?.asDouble ?: 0.0
         }
     }
+
+    private fun quantityInDocument(doc: JsonObject, productHref: String): Double =
+        doc.obj("positions")?.rows().orEmpty()
+            .filter { it.obj("assortment")?.href() == productHref }
+            .sumOf { it.get("quantity")?.asDouble ?: 0.0 }
 
     private fun mergePosition(
         doc: JsonObject,
@@ -146,6 +153,8 @@ class MoveRepository(private val api: MoySkladApi) {
 
     private companion object {
         const val STORES_EXPAND = "sourceStore,targetStore"
+        const val EPSILON = 1e-9
+        val SEARCH_FIELDS = listOf("barcode", "code", "article")
         val UUID_REGEX = Regex("^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$")
     }
 }

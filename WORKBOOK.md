@@ -14,3 +14,8 @@
 ## 2026-11-20 (пуш)
 
 - Коммит `dec2ced` в `main` с файлами `docs/TZ.md`, `AGENTS.md`, `WORKBOOK.md`. Пуш fast-forward от `17159ab`, проверен по выводу `git push`.
+
+## 2026-11-20 (CI)
+
+- Добавлен `.github/workflows/android-ci.yml`: сборка `assembleDebug` и загрузка APK. Пока Gradle-проекта нет (`gradlew` отсутствует), шаги сборки пропускаются, чтобы workflow не падал.
+- Осталось: добавить Gradle-проект Android (`gradlew`, `app/`), затем проверить первый запуск в Actions.

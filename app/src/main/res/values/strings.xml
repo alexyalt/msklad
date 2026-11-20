@@ -1,4 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">МойСклад Сканер</string>
+    <string name="settings_title">Настройки</string>
+    <string name="settings_hint">Укажите доступ к МойСклад и номер или ID готового документа «Перемещение», созданного в веб-интерфейсе.</string>
+    <string name="login">Логин</string>
+    <string name="password">Пароль</string>
+    <string name="move_number_or_id">Номер или ID перемещения</string>
+    <string name="start">Начать</string>
+    <string name="error_required">Обязательное поле</string>
+    <string name="move_title">Перемещение № %1$s</string>
+    <string name="move_route">Откуда: %1$s\nКуда: %2$s</string>
 </resources>

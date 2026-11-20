@@ -90,3 +90,9 @@
 
 - Коммит `5fa4624` вошёл в `main` без шага «Публикация APK в релиз latest»: две параллельные правки `android-ci.yml` перезаписали друг друга, осталось только `permissions: contents: write`. Прогон Actions на `5fa4624` прошёл успешно, но релиз не создал (по API `releases` пуст). В журнальной записи выше (про публикацию в Releases) это описано как сделанное, на деле на тот момент не было.
 - Шаг добавлен заново; результат пуша и прогона записан в следующей записи после проверки.
+
+## 2026-11-20 (проверка публикации APK)
+
+- Run на `e8f3f8e` (https://github.com/alexyalt/msklad/actions/runs/44792019644): success, шаги «Сборка debug APK» и «Публикация APK в релиз latest» выполнены (проверено по API).
+- По API релиз `latest` (prerelease) существует, в нём `msklad-debug.apk` ~29,7 МБ: https://github.com/alexyalt/msklad/releases/download/latest/msklad-debug.apk
+- Установка APK на устройство не проверялась.

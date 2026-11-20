@@ -2,7 +2,12 @@ package ru.msklad.scanner.data
 
 import android.content.Context
 
-data class Settings(val login: String, val password: String, val moveInput: String)
+data class Settings(
+    val login: String,
+    val password: String,
+    val moveInput: String,
+    val printServer: String = "",
+)
 
 class SettingsStore(context: Context) {
     private val prefs = context.applicationContext
@@ -12,6 +17,7 @@ class SettingsStore(context: Context) {
         login = prefs.getString(KEY_LOGIN, "").orEmpty(),
         password = prefs.getString(KEY_PASSWORD, "").orEmpty(),
         moveInput = prefs.getString(KEY_MOVE, "").orEmpty(),
+        printServer = prefs.getString(KEY_PRINT_SERVER, "").orEmpty(),
     )
 
     fun save(settings: Settings) {
@@ -19,6 +25,7 @@ class SettingsStore(context: Context) {
             .putString(KEY_LOGIN, settings.login)
             .putString(KEY_PASSWORD, settings.password)
             .putString(KEY_MOVE, settings.moveInput)
+            .putString(KEY_PRINT_SERVER, settings.printServer)
             .apply()
     }
 
@@ -26,5 +33,6 @@ class SettingsStore(context: Context) {
         const val KEY_LOGIN = "login"
         const val KEY_PASSWORD = "password"
         const val KEY_MOVE = "move"
+        const val KEY_PRINT_SERVER = "print_server"
     }
 }

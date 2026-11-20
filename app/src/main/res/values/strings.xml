@@ -24,4 +24,14 @@
     <string name="undo">❌ Отменить</string>
     <string name="product_line">%1$s\nкод: %2$s</string>
     <string name="undone_message">Отменено: %1$s × %2$s</string>
+    <string name="print_server_hint">Сервер печати этикеток (необязательно)</string>
+    <string name="print_server_helper">Адрес компьютера в Tailscale/ZeroTier, например 100.64.0.5 или 100.64.0.5:5000. Пусто: кнопка ЭТИК скрыта.</string>
+    <string name="error_print_server">Неверный адрес: ожидается IP или имя, при необходимости с портом</string>
+    <string name="label_title">Печать этикеток</string>
+    <string name="label_code_hint">Код или штрихкод товара</string>
+    <string name="label_search">Найти название товара</string>
+    <string name="label_count_hint">Количество (по умолчанию 1)</string>
+    <string name="label_print">Печать</string>
+    <string name="label_product">%1$s\nКод: %2$s</string>
+    <string name="label_printed">Напечатано: %1$s × %2$d</string>
 </resources>

@@ -28,6 +28,7 @@ import com.google.mlkit.vision.common.InputImage
 import kotlinx.coroutines.launch
 import ru.msklad.scanner.R
 import ru.msklad.scanner.data.MoveInfo
+import ru.msklad.scanner.data.SettingsStore
 import ru.msklad.scanner.data.StoreRef
 import ru.msklad.scanner.data.formatQuantity
 import ru.msklad.scanner.databinding.ActivityMainBinding
@@ -68,6 +69,10 @@ class MainActivity : AppCompatActivity() {
         binding.moveRoute.text = getString(R.string.move_route, move.source.name, move.target.name)
 
         binding.scannerToggle.setOnClickListener { toggleScanner() }
+        if (SettingsStore(this).load().printServer.isNotBlank()) {
+            binding.labelButton.visibility = View.VISIBLE
+            binding.labelButton.setOnClickListener { startActivity(Intent(this, LabelActivity::class.java)) }
+        }
         binding.undoButton.setOnClickListener { viewModel.undo() }
         binding.sendButton.setOnClickListener { submitManual() }
         binding.codeEdit.setOnEditorActionListener { _, actionId, _ ->

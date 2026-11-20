@@ -9,6 +9,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.launch
 import ru.msklad.scanner.R
+import ru.msklad.scanner.data.PrintServerAddress
 import ru.msklad.scanner.data.Settings
 import ru.msklad.scanner.databinding.ActivitySettingsBinding
 
@@ -26,6 +27,7 @@ class SettingsActivity : AppCompatActivity() {
             binding.loginEdit.setText(saved.login)
             binding.passwordEdit.setText(saved.password)
             binding.moveEdit.setText(saved.moveInput)
+            binding.printServerEdit.setText(saved.printServer)
         }
 
         binding.startButton.setOnClickListener { onStartClicked() }
@@ -55,8 +57,12 @@ class SettingsActivity : AppCompatActivity() {
         binding.loginLayout.error = if (login.isEmpty()) getString(R.string.error_required) else null
         binding.passwordLayout.error = if (password.isEmpty()) getString(R.string.error_required) else null
         binding.moveLayout.error = if (move.isEmpty()) getString(R.string.error_required) else null
-        if (login.isEmpty() || password.isEmpty() || move.isEmpty()) return
+        val printServer = binding.printServerEdit.text?.toString().orEmpty().trim()
+        val printServerValid = printServer.isEmpty() || PrintServerAddress.parse(printServer) != null
+        binding.printServerLayout.error =
+            if (printServerValid) null else getString(R.string.error_print_server)
+        if (login.isEmpty() || password.isEmpty() || move.isEmpty() || !printServerValid) return
 
-        viewModel.start(Settings(login, password, move))
+        viewModel.start(Settings(login, password, move, printServer))
     }
 }

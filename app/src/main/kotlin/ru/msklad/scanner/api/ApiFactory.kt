@@ -9,6 +9,8 @@ import java.util.concurrent.TimeUnit
 object ApiFactory {
     const val BASE_URL = "https://api.moysklad.ru/api/remap/1.2/"
 
+    private val rateLimit = RateLimitInterceptor()
+
     // OkHttp сам добавляет Accept-Encoding: gzip и прозрачно распаковывает ответ.
     fun create(login: String, password: String): MoySkladApi {
         val auth = Credentials.basic(login, password, Charsets.UTF_8)
@@ -16,6 +18,7 @@ object ApiFactory {
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
+            .addInterceptor(rateLimit)
             .addInterceptor { chain ->
                 chain.proceed(
                     chain.request().newBuilder()

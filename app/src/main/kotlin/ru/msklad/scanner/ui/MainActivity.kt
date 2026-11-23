@@ -229,11 +229,31 @@ class MainActivity : AppCompatActivity() {
             is ResultState.Error -> state.message
             is ResultState.Undone ->
                 getString(R.string.undone_message, state.result.productName, formatQuantity(state.result.quantity))
+            is ResultState.Removed ->
+                getString(R.string.removed_message, state.entry.name, formatQuantity(state.entry.quantity))
             else -> null
         }
         setTextOrHide(binding.resultProduct, product)
         setTextOrHide(binding.resultLine, line)
         setTextOrHide(binding.resultMessage, message)
+    }
+
+    private fun renderRecent(entries: List<ScanEntry>) {
+        binding.recentList.removeAllViews()
+        entries.forEachIndexed { index, entry ->
+            val row = layoutInflater.inflate(R.layout.item_recent_scan, binding.recentList, false)
+            row.findViewById<TextView>(R.id.recentText).text = getString(
+                R.string.recent_scan_line,
+                index + 1,
+                entry.code,
+                entry.name.take(RECENT_NAME_LENGTH),
+                formatQuantity(entry.quantity),
+            )
+            row.findViewById<Button>(R.id.recentRemove).setOnClickListener {
+                viewModel.removeScanned(entry.productHref)
+            }
+            binding.recentList.addView(row)
+        }
     }
 
     private fun setTextOrHide(view: TextView, text: String?) {
@@ -242,6 +262,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val RECENT_NAME_LENGTH = 30
         private const val EXTRA_ID = "id"
         private const val EXTRA_NAME = "name"
         private const val EXTRA_SOURCE_HREF = "source_href"

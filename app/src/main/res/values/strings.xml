@@ -39,4 +39,8 @@
     <string name="label_product">%1$s\nКод: %2$s</string>
     <string name="label_printed">Напечатано: %1$s × %2$d</string>
     <string name="app_version">Версия приложения: %1$s</string>
+    <string name="clear_description">Очистить поле</string>
+    <string name="mode_scanner">Сканер</string>
+    <string name="mode_mixed">Смешанный</string>
+    <string name="mode_keyboard">Клавиатура</string>
 </resources>

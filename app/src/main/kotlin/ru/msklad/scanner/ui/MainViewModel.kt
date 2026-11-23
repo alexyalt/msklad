@@ -30,6 +30,8 @@ sealed interface ResultState {
 
 data class ScanEntry(val code: String, val name: String, val productHref: String, val quantity: Double)
 
+enum class InputMode { SCANNER, MIXED, KEYBOARD }
+
 enum class Highlight { NONE, SENDING, SUCCESS, ERROR }
 
 enum class Sound { SCAN, SUCCESS, ERROR }
@@ -46,6 +48,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _scannerOn = MutableStateFlow(true)
     val scannerOn: StateFlow<Boolean> = _scannerOn
+
+    private val _inputMode = MutableStateFlow(InputMode.MIXED)
+    val inputMode: StateFlow<InputMode> = _inputMode
 
     private val _canUndo = MutableStateFlow(false)
     val canUndo: StateFlow<Boolean> = _canUndo
@@ -73,6 +78,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setScannerOn(on: Boolean) { _scannerOn.value = on }
+
+    fun setInputMode(mode: InputMode) { _inputMode.value = mode }
 
     fun onScanned(code: String, quantityText: String): Boolean {
         val now = SystemClock.elapsedRealtime()
@@ -215,7 +222,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private companion object {
         const val DEBOUNCE_MS = 1500L
         const val HIGHLIGHT_MS = 3000L
-        const val RECENT_LIMIT = 5
+        const val RECENT_LIMIT = 50
         const val EPSILON = 1e-9
     }
 }

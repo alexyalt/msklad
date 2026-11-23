@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/bg_idle"
@@ -40,7 +41,46 @@
             android:visibility="gone" />
     </LinearLayout>
 
+    <com.google.android.material.button.MaterialButtonToggleGroup
+        android:id="@+id/modeGroup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="4dp"
+        app:checkedButton="@+id/modeMixed"
+        app:selectionRequired="true"
+        app:singleSelection="true">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/modeScanner"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/mode_scanner"
+            android:textSize="12sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/modeMixed"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/mode_mixed"
+            android:textSize="12sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/modeKeyboard"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/mode_keyboard"
+            android:textSize="12sp" />
+    </com.google.android.material.button.MaterialButtonToggleGroup>
+
     <FrameLayout
+        android:id="@+id/cameraFrame"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_marginTop="8dp"
@@ -71,6 +111,7 @@
     </FrameLayout>
 
     <LinearLayout
+        android:id="@+id/inputBlock"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
@@ -178,13 +219,20 @@
             android:textSize="20sp" />
     </LinearLayout>
 
-    <LinearLayout
-        android:id="@+id/recentList"
+    <ScrollView
+        android:id="@+id/recentScroll"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
+        android:layout_height="160dp"
+        android:layout_marginBottom="4dp"
         android:paddingHorizontal="12dp"
-        android:paddingBottom="8dp" />
+        android:scrollbars="vertical">
+
+        <LinearLayout
+            android:id="@+id/recentList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </ScrollView>
 
     <LinearLayout
         android:id="@+id/keypad"
@@ -256,10 +304,123 @@
             android:layout_weight="1"
             android:text="9" />
         <Button
+            style="@style/KeypadKey"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:tag="clear"
+            android:contentDescription="@string/clear_description"
+            android:text="C" />
+        <Button
             android:id="@+id/keypadEnter"
             style="@style/KeypadKey"
             android:layout_width="0dp"
-            android:layout_weight="2"
+            android:layout_weight="1"
+            android:tag="enter"
+            android:contentDescription="@string/send"
+            android:text="→" />
+    </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/keypadLarge"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="5"
+        android:orientation="vertical"
+        android:paddingHorizontal="4dp"
+        android:paddingBottom="4dp"
+        android:visibility="gone">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
+
+        <Button
+            style="@style/KeypadKeyLarge"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="1" />
+        <Button
+            style="@style/KeypadKeyLarge"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="2" />
+        <Button
+            style="@style/KeypadKeyLarge"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="3" />
+    </LinearLayout>
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
+
+        <Button
+            style="@style/KeypadKeyLarge"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="4" />
+        <Button
+            style="@style/KeypadKeyLarge"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="5" />
+        <Button
+            style="@style/KeypadKeyLarge"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="6" />
+    </LinearLayout>
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
+
+        <Button
+            style="@style/KeypadKeyLarge"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="7" />
+        <Button
+            style="@style/KeypadKeyLarge"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="8" />
+        <Button
+            style="@style/KeypadKeyLarge"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="9" />
+    </LinearLayout>
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
+
+        <Button
+            style="@style/KeypadKeyLarge"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:tag="clear"
+            android:contentDescription="@string/clear_description"
+            android:text="C" />
+        <Button
+            style="@style/KeypadKeyLarge"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="0" />
+        <Button
+            android:id="@+id/keypadLargeEnter"
+            style="@style/KeypadKeyLarge"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:tag="enter"
             android:contentDescription="@string/send"
             android:text="→" />
     </LinearLayout>

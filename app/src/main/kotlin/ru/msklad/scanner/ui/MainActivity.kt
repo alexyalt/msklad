@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -45,11 +46,13 @@ class MainActivity : AppCompatActivity() {
     private val viewModel: MainViewModel by viewModels()
     private val barcodeScanner = BarcodeScanning.getClient()
     private var cameraProvider: ProcessCameraProvider? = null
+    private var cameraActive = false
 
     private val cameraPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) {
                 viewModel.setScannerOn(true)
+                updateCamera()
             } else {
                 viewModel.setScannerOn(false)
                 Snackbar.make(binding.root, R.string.camera_denied, Snackbar.LENGTH_LONG).show()
@@ -78,13 +81,11 @@ class MainActivity : AppCompatActivity() {
         binding.undoButton.setOnClickListener { viewModel.undo() }
         binding.codeEdit.showSoftInputOnFocus = false
         binding.quantityEdit.showSoftInputOnFocus = false
-        binding.keypadEnter.setOnClickListener { submitManual() }
-        for (i in 0 until binding.keypad.childCount) {
-            val keyRow = binding.keypad.getChildAt(i) as ViewGroup
-            for (j in 0 until keyRow.childCount) {
-                val key = keyRow.getChildAt(j) as Button
-                if (key.id != R.id.keypadEnter) key.setOnClickListener { typeDigit(key.text) }
-            }
+        bindKeys(binding.keypad)
+        bindKeys(binding.keypadLarge)
+        binding.modeGroup.check(modeButtonId(viewModel.inputMode.value))
+        binding.modeGroup.addOnButtonCheckedListener { _, id, checked ->
+            if (checked) viewModel.setInputMode(modeFromButtonId(id))
         }
         binding.codeEdit.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND) {
@@ -97,7 +98,8 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                launch { viewModel.scannerOn.collect { applyScannerState(it) } }
+                launch { viewModel.scannerOn.collect { updateCamera() } }
+                launch { viewModel.inputMode.collect { applyMode(it) } }
                 launch { viewModel.result.collect { render(it) } }
                 launch { viewModel.highlight.collect { applyHighlight(it) } }
                 launch { viewModel.canUndo.collect { binding.undoButton.visibility = if (it) View.VISIBLE else View.GONE } }
@@ -129,18 +131,62 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun applyScannerState(on: Boolean) {
-        binding.scannerToggle.setText(if (on) R.string.scanner_off else R.string.scanner_on)
-        binding.scannerOffLabel.visibility = if (on) View.GONE else View.VISIBLE
-        binding.previewView.visibility = if (on) View.VISIBLE else View.INVISIBLE
-        if (!on) {
+    private fun updateCamera() {
+        val scannerOn = viewModel.scannerOn.value
+        val active = scannerOn && viewModel.inputMode.value != InputMode.KEYBOARD
+        binding.scannerToggle.setText(if (scannerOn) R.string.scanner_off else R.string.scanner_on)
+        binding.scannerOffLabel.visibility = if (scannerOn) View.GONE else View.VISIBLE
+        binding.previewView.visibility = if (active) View.VISIBLE else View.INVISIBLE
+        if (!active) {
             cameraProvider?.unbindAll()
+            cameraActive = false
         } else if (hasCameraPermission()) {
-            startCamera()
+            if (!cameraActive) {
+                cameraActive = true
+                startCamera()
+            }
         } else {
             cameraPermission.launch(Manifest.permission.CAMERA)
         }
     }
+
+    private fun applyMode(mode: InputMode) {
+        binding.cameraFrame.visibility = if (mode == InputMode.KEYBOARD) View.GONE else View.VISIBLE
+        binding.inputBlock.visibility = if (mode == InputMode.SCANNER) View.GONE else View.VISIBLE
+        binding.keypad.visibility = if (mode == InputMode.MIXED) View.VISIBLE else View.GONE
+        binding.keypadLarge.visibility = if (mode == InputMode.KEYBOARD) View.VISIBLE else View.GONE
+        (binding.cameraFrame.layoutParams as LinearLayout.LayoutParams).weight =
+            if (mode == InputMode.SCANNER) 6.5f else 2.8f
+        binding.cameraFrame.requestLayout()
+        updateCamera()
+    }
+
+    private fun modeButtonId(mode: InputMode) = when (mode) {
+        InputMode.SCANNER -> R.id.modeScanner
+        InputMode.MIXED -> R.id.modeMixed
+        InputMode.KEYBOARD -> R.id.modeKeyboard
+    }
+
+    private fun modeFromButtonId(id: Int) = when (id) {
+        R.id.modeScanner -> InputMode.SCANNER
+        R.id.modeKeyboard -> InputMode.KEYBOARD
+        else -> InputMode.MIXED
+    }
+
+    private fun bindKeys(group: ViewGroup) {
+        for (i in 0 until group.childCount) {
+            when (val child = group.getChildAt(i)) {
+                is Button -> when (child.tag) {
+                    "enter" -> child.setOnClickListener { submitManual() }
+                    "clear" -> child.setOnClickListener { focusedField().setText("") }
+                    else -> child.setOnClickListener { typeDigit(child.text) }
+                }
+                is ViewGroup -> bindKeys(child)
+            }
+        }
+    }
+
+    private fun focusedField() = if (binding.quantityEdit.hasFocus()) binding.quantityEdit else binding.codeEdit
 
     @androidx.annotation.OptIn(ExperimentalGetImage::class)
     private fun startCamera() {
@@ -148,7 +194,7 @@ class MainActivity : AppCompatActivity() {
         future.addListener({
             val provider = future.get()
             cameraProvider = provider
-            if (!viewModel.scannerOn.value) return@addListener
+            if (!cameraActive) return@addListener
 
             val preview = Preview.Builder().build()
                 .also { it.setSurfaceProvider(binding.previewView.surfaceProvider) }
@@ -161,6 +207,7 @@ class MainActivity : AppCompatActivity() {
             try {
                 provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
             } catch (e: IllegalStateException) {
+                cameraActive = false
                 viewModel.setScannerOn(false)
                 Snackbar.make(binding.root, R.string.camera_failed, Snackbar.LENGTH_LONG).show()
             }
@@ -187,8 +234,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun typeDigit(digit: CharSequence) {
-        val field = if (binding.quantityEdit.hasFocus()) binding.quantityEdit else binding.codeEdit
-        field.append(digit)
+        focusedField().append(digit)
     }
 
     private fun submitManual() {
@@ -226,6 +272,7 @@ class MainActivity : AppCompatActivity() {
     private fun render(state: ResultState) {
         val loading = state == ResultState.Loading
         binding.keypadEnter.isEnabled = !loading
+        binding.keypadLargeEnter.isEnabled = !loading
         binding.progress.visibility = if (loading) View.VISIBLE else View.GONE
 
         val added = (state as? ResultState.Success)?.result
@@ -269,6 +316,7 @@ class MainActivity : AppCompatActivity() {
             }
             binding.recentList.addView(row)
         }
+        binding.recentScroll.scrollTo(0, 0)
     }
 
     private fun setTextOrHide(view: TextView, text: String?) {

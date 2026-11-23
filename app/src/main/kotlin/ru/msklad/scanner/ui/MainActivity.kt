@@ -76,6 +76,8 @@ class MainActivity : AppCompatActivity() {
             binding.labelButton.setOnClickListener { startActivity(Intent(this, LabelActivity::class.java)) }
         }
         binding.undoButton.setOnClickListener { viewModel.undo() }
+        binding.codeEdit.showSoftInputOnFocus = false
+        binding.quantityEdit.showSoftInputOnFocus = false
         binding.keypadEnter.setOnClickListener { submitManual() }
         for (i in 0 until binding.keypad.childCount) {
             val keyRow = binding.keypad.getChildAt(i) as ViewGroup

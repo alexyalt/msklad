@@ -94,7 +94,6 @@
                     android:layout_height="wrap_content"
                     android:imeOptions="actionSend"
                     android:inputType="number"
-                    android:showSoftInputOnFocus="false"
                     android:singleLine="true" />
             </com.google.android.material.textfield.TextInputLayout>
 
@@ -109,7 +108,6 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:inputType="numberDecimal"
-                    android:showSoftInputOnFocus="false"
                     android:singleLine="true" />
             </com.google.android.material.textfield.TextInputLayout>
         </LinearLayout>

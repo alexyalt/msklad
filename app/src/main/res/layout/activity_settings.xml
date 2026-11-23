@@ -111,5 +111,13 @@
             android:textColor="@color/error_red"
             android:textAppearance="?attr/textAppearanceBodyLarge"
             android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/versionText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:gravity="center"
+            android:textAppearance="?attr/textAppearanceBodySmall" />
     </LinearLayout>
 </ScrollView>

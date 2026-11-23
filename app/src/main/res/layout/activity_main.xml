@@ -94,6 +94,7 @@
                     android:layout_height="wrap_content"
                     android:imeOptions="actionSend"
                     android:inputType="number"
+                    android:showSoftInputOnFocus="false"
                     android:singleLine="true" />
             </com.google.android.material.textfield.TextInputLayout>
 
@@ -108,15 +109,10 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:inputType="numberDecimal"
+                    android:showSoftInputOnFocus="false"
                     android:singleLine="true" />
             </com.google.android.material.textfield.TextInputLayout>
         </LinearLayout>
-
-        <Button
-            android:id="@+id/sendButton"
-            android:layout_width="match_parent"
-            android:layout_height="52dp"
-            android:text="@string/send" />
     </LinearLayout>
 
     <LinearLayout
@@ -191,4 +187,83 @@
         android:orientation="vertical"
         android:paddingHorizontal="12dp"
         android:paddingBottom="8dp" />
+
+    <LinearLayout
+        android:id="@+id/keypad"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="4dp"
+        android:paddingBottom="4dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            style="@style/KeypadKey"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="0" />
+        <Button
+            style="@style/KeypadKey"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="1" />
+        <Button
+            style="@style/KeypadKey"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="2" />
+        <Button
+            style="@style/KeypadKey"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="3" />
+        <Button
+            style="@style/KeypadKey"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="4" />
+        <Button
+            style="@style/KeypadKey"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="5" />
+    </LinearLayout>
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            style="@style/KeypadKey"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="6" />
+        <Button
+            style="@style/KeypadKey"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="7" />
+        <Button
+            style="@style/KeypadKey"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="8" />
+        <Button
+            style="@style/KeypadKey"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="9" />
+        <Button
+            android:id="@+id/keypadEnter"
+            style="@style/KeypadKey"
+            android:layout_width="0dp"
+            android:layout_weight="2"
+            android:contentDescription="@string/send"
+            android:text="→" />
+    </LinearLayout>
+    </LinearLayout>
 </LinearLayout>

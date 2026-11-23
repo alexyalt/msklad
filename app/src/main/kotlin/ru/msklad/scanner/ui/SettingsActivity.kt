@@ -30,6 +30,7 @@ class SettingsActivity : AppCompatActivity() {
             binding.printServerEdit.setText(saved.printServer)
         }
 
+        binding.versionText.text = getString(R.string.app_version, packageManager.getPackageInfo(packageName, 0).versionName)
         binding.startButton.setOnClickListener { onStartClicked() }
 
         lifecycleScope.launch {

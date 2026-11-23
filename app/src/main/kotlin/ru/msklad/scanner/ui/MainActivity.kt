@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
@@ -75,7 +76,14 @@ class MainActivity : AppCompatActivity() {
             binding.labelButton.setOnClickListener { startActivity(Intent(this, LabelActivity::class.java)) }
         }
         binding.undoButton.setOnClickListener { viewModel.undo() }
-        binding.sendButton.setOnClickListener { submitManual() }
+        binding.keypadEnter.setOnClickListener { submitManual() }
+        for (i in 0 until binding.keypad.childCount) {
+            val keyRow = binding.keypad.getChildAt(i) as ViewGroup
+            for (j in 0 until keyRow.childCount) {
+                val key = keyRow.getChildAt(j) as Button
+                if (key.id != R.id.keypadEnter) key.setOnClickListener { typeDigit(key.text) }
+            }
+        }
         binding.codeEdit.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND) {
                 submitManual()
@@ -176,6 +184,11 @@ class MainActivity : AppCompatActivity() {
             .addOnCompleteListener { proxy.close() }
     }
 
+    private fun typeDigit(digit: CharSequence) {
+        val field = if (binding.quantityEdit.hasFocus()) binding.quantityEdit else binding.codeEdit
+        field.append(digit)
+    }
+
     private fun submitManual() {
         viewModel.submit(
             binding.codeEdit.text?.toString().orEmpty(),
@@ -210,7 +223,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun render(state: ResultState) {
         val loading = state == ResultState.Loading
-        binding.sendButton.isEnabled = !loading
+        binding.keypadEnter.isEnabled = !loading
         binding.progress.visibility = if (loading) View.VISIBLE else View.GONE
 
         val added = (state as? ResultState.Success)?.result
@@ -262,7 +275,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
-        private const val RECENT_NAME_LENGTH = 30
+        private const val RECENT_NAME_LENGTH = 50
         private const val EXTRA_ID = "id"
         private const val EXTRA_NAME = "name"
         private const val EXTRA_SOURCE_HREF = "source_href"

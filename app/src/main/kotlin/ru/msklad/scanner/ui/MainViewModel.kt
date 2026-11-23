@@ -24,8 +24,11 @@ sealed interface ResultState {
     data object Loading : ResultState
     data class Success(val result: AddResult) : ResultState
     data class Undone(val result: AddResult) : ResultState
+    data class Removed(val entry: ScanEntry) : ResultState
     data class Error(val message: String) : ResultState
 }
+
+data class ScanEntry(val code: String, val name: String, val productHref: String, val quantity: Double)
 
 enum class Highlight { NONE, SENDING, SUCCESS, ERROR }
 
@@ -53,10 +56,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _clearInput = Channel<Unit>(Channel.BUFFERED)
     val clearInput = _clearInput.receiveAsFlow()
 
+    private val _recent = MutableStateFlow<List<ScanEntry>>(emptyList())
+    val recent: StateFlow<List<ScanEntry>> = _recent
+
     private var lastAdded: AddResult? = null
     private var lastScanCode: String? = null
     private var lastScanAt = 0L
     private var resetJob: Job? = null
+    private val session = LinkedHashMap<String, ScanEntry>()
 
     fun init(move: MoveInfo) {
         if (::move.isInitialized) return
@@ -92,6 +99,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val added = repository.addItem(move, trimmed, quantity)
                 lastAdded = added
+                recordScan(added)
                 _canUndo.value = true
                 show(ResultState.Success(added), Highlight.SUCCESS)
                 _sounds.send(Sound.SUCCESS)
@@ -115,6 +123,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 repository.undoAdd(move, added)
                 lastAdded = null
+                forgetScan(added)
                 show(ResultState.Undone(added), Highlight.SUCCESS)
                 _sounds.send(Sound.SUCCESS)
             } catch (e: CancellationException) {
@@ -127,6 +136,52 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 fail("Неожиданная ошибка: ${e.message ?: e::class.java.simpleName}")
             }
         }
+    }
+
+    fun removeScanned(productHref: String) {
+        val entry = session[productHref] ?: return
+        if (_result.value == ResultState.Loading) return
+        _canUndo.value = false
+        startSending()
+        viewModelScope.launch {
+            try {
+                repository.removeQuantity(move, entry.productHref, entry.name, entry.quantity)
+                lastAdded = null
+                session.remove(productHref)
+                publishRecent()
+                show(ResultState.Removed(entry), Highlight.SUCCESS)
+                _sounds.send(Sound.SUCCESS)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                _canUndo.value = lastAdded != null
+                fail(e.message ?: "Неизвестная ошибка")
+            } catch (e: Exception) {
+                _canUndo.value = lastAdded != null
+                fail("Неожиданная ошибка: ${e.message ?: e::class.java.simpleName}")
+            }
+        }
+    }
+
+    private fun recordScan(added: AddResult) {
+        val total = (session.remove(added.productHref)?.quantity ?: 0.0) + added.quantity
+        session[added.productHref] = ScanEntry(added.productCode, added.productName, added.productHref, total)
+        publishRecent()
+    }
+
+    private fun forgetScan(added: AddResult) {
+        val entry = session[added.productHref] ?: return
+        val left = entry.quantity - added.quantity
+        if (left > EPSILON) {
+            session[added.productHref] = entry.copy(quantity = left)
+        } else {
+            session.remove(added.productHref)
+        }
+        publishRecent()
+    }
+
+    private fun publishRecent() {
+        _recent.value = session.values.reversed().take(RECENT_LIMIT)
     }
 
     private fun startSending() {
@@ -160,5 +215,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private companion object {
         const val DEBOUNCE_MS = 1500L
         const val HIGHLIGHT_MS = 3000L
+        const val RECENT_LIMIT = 5
+        const val EPSILON = 1e-9
     }
 }

@@ -90,14 +90,17 @@ class MoveRepository(private val api: MoySkladApi) {
         ProductInfo(product.str("name").orEmpty(), product.str("code").orEmpty())
     }
 
-    suspend fun undoAdd(move: MoveInfo, added: AddResult) = apiCall {
+    suspend fun undoAdd(move: MoveInfo, added: AddResult) =
+        removeQuantity(move, added.productHref, added.productName, added.quantity)
+
+    suspend fun removeQuantity(move: MoveInfo, productHref: String, productName: String, quantity: Double) = apiCall {
         val doc = api.move(move.id, "positions")
         val positions = JsonArray()
         var found = false
         for (position in doc.obj("positions")?.rows().orEmpty()) {
-            if (!found && position.obj("assortment")?.href() == added.productHref) {
+            if (!found && position.obj("assortment")?.href() == productHref) {
                 found = true
-                val left = (position.get("quantity")?.asDouble ?: 0.0) - added.quantity
+                val left = (position.get("quantity")?.asDouble ?: 0.0) - quantity
                 if (left > EPSILON) {
                     positions.add(position.deepCopy().apply { addProperty("quantity", left) })
                 }
@@ -105,7 +108,7 @@ class MoveRepository(private val api: MoySkladApi) {
                 positions.add(position.deepCopy())
             }
         }
-        if (!found) throw ApiException("Позиции «${added.productName}» уже нет в документе, отменять нечего")
+        if (!found) throw ApiException("Позиции «$productName» уже нет в документе")
         api.updateMove(move.id, JsonObject().apply { add("positions", positions) })
     }
 

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
+
+    <TextView
+        android:id="@+id/recentText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:singleLine="true"
+        android:textColor="@color/text_secondary"
+        android:textSize="11sp" />
+
+    <Button
+        android:id="@+id/recentRemove"
+        android:layout_width="wrap_content"
+        android:layout_height="32dp"
+        android:contentDescription="@string/remove_scan_description"
+        android:minWidth="40dp"
+        android:minHeight="0dp"
+        android:paddingVertical="0dp"
+        android:paddingHorizontal="8dp"
+        android:text="✕"
+        android:textColor="@color/error_red"
+        android:textSize="13sp" />
+</LinearLayout>

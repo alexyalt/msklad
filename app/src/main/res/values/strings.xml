@@ -21,7 +21,11 @@
     <string name="result_idle">Отсканируйте или введите код товара</string>
     <string name="result_line">ИЗ %1$s → %2$s → В %3$s</string>
     <string name="label_button">ЭТИК</string>
-    <string name="undo">❌ Отменить</string>
+    <string name="undo">✕</string>
+    <string name="undo_description">Отменить последнюю операцию</string>
+    <string name="remove_scan_description">Удалить из перемещения все отсканированные по этой позиции</string>
+    <string name="recent_scan_line">%1$d. %2$s - %3$s - %4$s</string>
+    <string name="removed_message">Удалено из перемещения: %1$s × %2$s</string>
     <string name="product_line">%1$s\nкод: %2$s</string>
     <string name="undone_message">Отменено: %1$s × %2$s</string>
     <string name="print_server_hint">Сервер печати этикеток (необязательно)</string>

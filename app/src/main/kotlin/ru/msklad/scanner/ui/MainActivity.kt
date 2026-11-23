@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
+import android.widget.Button
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -92,6 +93,7 @@ class MainActivity : AppCompatActivity() {
                 launch { viewModel.canUndo.collect { binding.undoButton.visibility = if (it) View.VISIBLE else View.GONE } }
                 launch { viewModel.sounds.collect { onSound(it) } }
                 launch { viewModel.clearInput.collect { clearInput() } }
+                launch { viewModel.recent.collect { renderRecent(it) } }
             }
         }
     }

@@ -19,7 +19,7 @@
     <string name="quantity_hint">Кол-во</string>
     <string name="send">Отправить</string>
     <string name="result_idle">Отсканируйте или введите код товара</string>
-    <string name="result_line">ИЗ %1$s → %2$s → В %3$s</string>
+    <string name="result_line">ИЗ (%1$s) - (%2$s) - В (%3$s)</string>
     <string name="label_button">ЭТИК</string>
     <string name="undo">✕</string>
     <string name="undo_description">Отменить последнюю операцию</string>
@@ -61,7 +61,7 @@
     <string name="doc_loss_title">Списание</string>
     <string name="supply_number_or_id">Номер или ID оприходования</string>
     <string name="loss_number_or_id">Номер или ID списания</string>
-    <string name="result_line_store">%1$s → %2$s → %3$s</string>
+    <string name="result_line_store">было (%1$s) - (%2$s) - стало (%3$s)</string>
     <string name="error_code_required">Введите код или штрихкод товара</string>
     <string name="error_quantity_invalid">Некорректное количество: нужно число больше нуля</string>
     <string name="error_unknown">Неизвестная ошибка</string>
@@ -74,4 +74,7 @@
     <string name="sync_aborted">Синхронизация прервана: %1$s\nДанные сохранены локально.</string>
     <string name="sync_done">Данные переданы: %1$d поз.</string>
     <string name="sync_nothing">Остатки обновлены, передавать нечего</string>
+    <string name="internal_barcodes_only">Только внутренние штрихкоды</string>
+    <string name="internal_barcodes_helper">Учитывать только штрихкоды, начинающиеся с 2 (этикетки МойСклад). Штрихкоды производителей (EAN-13) при сканировании камерой игнорируются. Ручной ввод кода или артикула работает всегда.</string>
+    <string name="barcode_not_internal">Пропущен внешний штрихкод %1$s — включён режим только внутренних штрихкодов</string>
 </resources>

@@ -30,6 +30,7 @@ class SettingsActivity : AppCompatActivity() {
             binding.supplyEdit.setText(saved.supplyInput)
             binding.lossEdit.setText(saved.lossInput)
             binding.printServerEdit.setText(saved.printServer)
+            binding.internalBarcodeSwitch.isChecked = saved.internalBarcodesOnly
             renderOfflineLines(viewModel.savedSummary())
         }
 
@@ -93,6 +94,7 @@ class SettingsActivity : AppCompatActivity() {
             printServer = printServer,
             supplyInput = supply,
             lossInput = loss,
+            internalBarcodesOnly = binding.internalBarcodeSwitch.isChecked,
         )
     }
 }

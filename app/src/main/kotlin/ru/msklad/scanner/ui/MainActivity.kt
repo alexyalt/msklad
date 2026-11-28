@@ -36,7 +36,6 @@ import ru.msklad.scanner.data.DocumentType
 import ru.msklad.scanner.data.OfflineStore
 import ru.msklad.scanner.data.SettingsStore
 import ru.msklad.scanner.data.StoreRef
-import ru.msklad.scanner.data.formatQuantity
 import ru.msklad.scanner.data.withUom
 import ru.msklad.scanner.databinding.ActivityMainBinding
 import java.util.concurrent.ExecutorService
@@ -328,17 +327,17 @@ class MainActivity : AppCompatActivity() {
         if (result.docType == DocumentType.MOVE) {
             getString(
                 R.string.result_line,
-                formatQuantity(result.sourceAfter),
+                withUom(result.sourceAfter, result.uom),
                 withUom(result.quantity, result.uom),
-                formatQuantity(result.targetAfter),
+                withUom(result.targetAfter, result.uom),
             )
         } else {
             val sign = if (result.docType == DocumentType.LOSS) "-" else "+"
             getString(
                 R.string.result_line_store,
-                formatQuantity(result.storeBefore),
+                withUom(result.storeBefore, result.uom),
                 sign + withUom(result.quantity, result.uom),
-                formatQuantity(result.sourceAfter),
+                withUom(result.sourceAfter, result.uom),
             )
         }
 

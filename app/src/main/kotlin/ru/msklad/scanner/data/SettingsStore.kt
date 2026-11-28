@@ -9,6 +9,7 @@ data class Settings(
     val printServer: String = "",
     val supplyInput: String = "",
     val lossInput: String = "",
+    val internalBarcodesOnly: Boolean = false,
 )
 
 class SettingsStore(context: Context) {
@@ -22,6 +23,7 @@ class SettingsStore(context: Context) {
         printServer = prefs.getString(KEY_PRINT_SERVER, "").orEmpty(),
         supplyInput = prefs.getString(KEY_SUPPLY, "").orEmpty(),
         lossInput = prefs.getString(KEY_LOSS, "").orEmpty(),
+        internalBarcodesOnly = prefs.getBoolean(KEY_INTERNAL_BARCODES, false),
     )
 
     fun save(settings: Settings) {
@@ -32,6 +34,7 @@ class SettingsStore(context: Context) {
             .putString(KEY_PRINT_SERVER, settings.printServer)
             .putString(KEY_SUPPLY, settings.supplyInput)
             .putString(KEY_LOSS, settings.lossInput)
+            .putBoolean(KEY_INTERNAL_BARCODES, settings.internalBarcodesOnly)
             .apply()
     }
 
@@ -42,5 +45,6 @@ class SettingsStore(context: Context) {
         const val KEY_PRINT_SERVER = "print_server"
         const val KEY_SUPPLY = "supply"
         const val KEY_LOSS = "loss"
+        const val KEY_INTERNAL_BARCODES = "internal_barcodes_only"
     }
 }

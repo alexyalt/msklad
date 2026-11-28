@@ -30,17 +30,21 @@ import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import kotlinx.coroutines.launch
 import ru.msklad.scanner.R
-import ru.msklad.scanner.data.MoveInfo
+import ru.msklad.scanner.data.AddResult
+import ru.msklad.scanner.data.DocInfo
+import ru.msklad.scanner.data.DocumentType
+import ru.msklad.scanner.data.OfflineStore
 import ru.msklad.scanner.data.SettingsStore
 import ru.msklad.scanner.data.StoreRef
 import ru.msklad.scanner.data.formatQuantity
+import ru.msklad.scanner.data.withUom
 import ru.msklad.scanner.databinding.ActivityMainBinding
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
-    private lateinit var move: MoveInfo
+    private lateinit var move: DocInfo
     private lateinit var sounds: SoundPlayer
     private lateinit var analysisExecutor: ExecutorService
     private val viewModel: MainViewModel by viewModels()
@@ -71,9 +75,21 @@ class MainActivity : AppCompatActivity() {
         analysisExecutor = Executors.newSingleThreadExecutor()
 
         binding.moveTitle.text = getString(R.string.move_title, move.name)
-        binding.moveRoute.text = getString(R.string.move_route, move.source.name, move.target.name)
+        binding.moveRoute.text = getString(R.string.move_route, move.store.name, move.target?.name.orEmpty())
 
         binding.scannerToggle.setOnClickListener { toggleScanner() }
+        binding.offlineSwitch.isChecked = viewModel.offline.value
+        binding.offlineSwitch.setOnCheckedChangeListener { _, checked ->
+            if (checked && !OfflineStore(this).load().hasData) {
+                Snackbar.make(binding.root, R.string.offline_no_data, Snackbar.LENGTH_LONG).show()
+            }
+            viewModel.setOffline(checked)
+        }
+        binding.syncButton.setOnClickListener { viewModel.sync() }
+        binding.docGroup.check(docButtonId(viewModel.docType.value))
+        binding.docGroup.addOnButtonCheckedListener { _, id, checked ->
+            if (checked) viewModel.setDocType(docFromButtonId(id))
+        }
         if (SettingsStore(this).load().printServer.isNotBlank()) {
             binding.labelButton.visibility = View.VISIBLE
             binding.labelButton.setOnClickListener { startActivity(Intent(this, LabelActivity::class.java)) }
@@ -106,6 +122,10 @@ class MainActivity : AppCompatActivity() {
                 launch { viewModel.sounds.collect { onSound(it) } }
                 launch { viewModel.clearInput.collect { clearInput() } }
                 launch { viewModel.recent.collect { renderRecent(it) } }
+                launch { viewModel.offline.collect { binding.offlineSwitch.isChecked = it } }
+                launch { viewModel.docType.collect { syncDocButtons(it) } }
+                launch { viewModel.syncing.collect { binding.syncButton.isEnabled = !it } }
+                launch { viewModel.pendingCount.collect { renderPending(it) } }
             }
         }
     }
@@ -278,26 +298,70 @@ class MainActivity : AppCompatActivity() {
         val added = (state as? ResultState.Success)?.result
         val undone = (state as? ResultState.Undone)?.result
         val product = (added ?: undone)?.let { getString(R.string.product_line, it.productName, it.productCode) }
-        val line = added?.let {
-            getString(
-                R.string.result_line,
-                formatQuantity(it.sourceAfter),
-                formatQuantity(it.quantity),
-                formatQuantity(it.targetAfter),
-            )
-        }
+        val line = added?.let { resultLine(it) }
         val message = when (state) {
             ResultState.Idle -> getString(R.string.result_idle)
             is ResultState.Error -> state.message
-            is ResultState.Undone ->
-                getString(R.string.undone_message, state.result.productName, formatQuantity(state.result.quantity))
-            is ResultState.Removed ->
-                getString(R.string.removed_message, state.entry.name, formatQuantity(state.entry.quantity))
+            is ResultState.Undone -> getString(
+                R.string.undone_message,
+                state.result.productName,
+                withUom(state.result.quantity, state.result.uom),
+            )
+            is ResultState.Removed -> getString(
+                R.string.removed_message,
+                state.entry.name,
+                withUom(state.entry.quantity, state.entry.uom),
+            )
+            is ResultState.Synced -> state.message
             else -> null
         }
         setTextOrHide(binding.resultProduct, product)
         setTextOrHide(binding.resultLine, line)
         setTextOrHide(binding.resultMessage, message)
+    }
+
+    /**
+     * Строка результата. Для перемещения — «ИЗ → В» между складами, для оприходования и
+     * списания — было → изменение → стало на складе документа. Количество всегда с единицей измерения.
+     */
+    private fun resultLine(result: AddResult): String =
+        if (result.docType == DocumentType.MOVE) {
+            getString(
+                R.string.result_line,
+                formatQuantity(result.sourceAfter),
+                withUom(result.quantity, result.uom),
+                formatQuantity(result.targetAfter),
+            )
+        } else {
+            val sign = if (result.docType == DocumentType.LOSS) "-" else "+"
+            getString(
+                R.string.result_line_store,
+                formatQuantity(result.storeBefore),
+                sign + withUom(result.quantity, result.uom),
+                formatQuantity(result.sourceAfter),
+            )
+        }
+
+    private fun docButtonId(type: DocumentType) = when (type) {
+        DocumentType.MOVE -> R.id.docMove
+        DocumentType.SUPPLY -> R.id.docSupply
+        DocumentType.LOSS -> R.id.docLoss
+    }
+
+    private fun docFromButtonId(id: Int) = when (id) {
+        R.id.docSupply -> DocumentType.SUPPLY
+        R.id.docLoss -> DocumentType.LOSS
+        else -> DocumentType.MOVE
+    }
+
+    private fun syncDocButtons(type: DocumentType) {
+        val id = docButtonId(type)
+        if (!binding.docGroup.isChecked(id)) binding.docGroup.check(id)
+    }
+
+    private fun renderPending(count: Int) {
+        binding.pendingLabel.visibility = if (count > 0) View.VISIBLE else View.GONE
+        binding.pendingLabel.text = getString(R.string.pending_count, count)
     }
 
     private fun renderRecent(entries: List<ScanEntry>) {
@@ -309,7 +373,7 @@ class MainActivity : AppCompatActivity() {
                 index + 1,
                 entry.code,
                 entry.name.take(RECENT_NAME_LENGTH),
-                formatQuantity(entry.quantity),
+                withUom(entry.quantity, entry.uom),
             )
             row.findViewById<Button>(R.id.recentRemove).setOnClickListener {
                 viewModel.removeScanned(entry.productHref)
@@ -327,31 +391,35 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val RECENT_NAME_LENGTH = 50
         private const val EXTRA_ID = "id"
+        private const val EXTRA_TYPE = "type"
         private const val EXTRA_NAME = "name"
         private const val EXTRA_SOURCE_HREF = "source_href"
         private const val EXTRA_SOURCE_NAME = "source_name"
         private const val EXTRA_TARGET_HREF = "target_href"
         private const val EXTRA_TARGET_NAME = "target_name"
 
-        fun intent(context: Context, move: MoveInfo) = Intent(context, MainActivity::class.java)
+        fun intent(context: Context, move: DocInfo) = Intent(context, MainActivity::class.java)
             .putExtra(EXTRA_ID, move.id)
+            .putExtra(EXTRA_TYPE, move.type.name)
             .putExtra(EXTRA_NAME, move.name)
-            .putExtra(EXTRA_SOURCE_HREF, move.source.href)
-            .putExtra(EXTRA_SOURCE_NAME, move.source.name)
-            .putExtra(EXTRA_TARGET_HREF, move.target.href)
-            .putExtra(EXTRA_TARGET_NAME, move.target.name)
+            .putExtra(EXTRA_SOURCE_HREF, move.store.href)
+            .putExtra(EXTRA_SOURCE_NAME, move.store.name)
+            .putExtra(EXTRA_TARGET_HREF, move.target?.href.orEmpty())
+            .putExtra(EXTRA_TARGET_NAME, move.target?.name.orEmpty())
 
-        fun moveFromIntent(intent: Intent) = MoveInfo(
+        fun moveFromIntent(intent: Intent) = DocInfo(
+            type = intent.getStringExtra(EXTRA_TYPE)
+                ?.let { runCatching { DocumentType.valueOf(it) }.getOrNull() }
+                ?: DocumentType.MOVE,
             id = intent.getStringExtra(EXTRA_ID).orEmpty(),
             name = intent.getStringExtra(EXTRA_NAME).orEmpty(),
-            source = StoreRef(
+            store = StoreRef(
                 intent.getStringExtra(EXTRA_SOURCE_HREF).orEmpty(),
                 intent.getStringExtra(EXTRA_SOURCE_NAME).orEmpty(),
             ),
-            target = StoreRef(
-                intent.getStringExtra(EXTRA_TARGET_HREF).orEmpty(),
-                intent.getStringExtra(EXTRA_TARGET_NAME).orEmpty(),
-            ),
+            target = intent.getStringExtra(EXTRA_TARGET_HREF)
+                ?.takeIf(String::isNotBlank)
+                ?.let { StoreRef(it, intent.getStringExtra(EXTRA_TARGET_NAME).orEmpty()) },
         )
     }
 }

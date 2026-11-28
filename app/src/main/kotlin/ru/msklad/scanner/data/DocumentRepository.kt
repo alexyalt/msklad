@@ -76,7 +76,8 @@ class DocumentRepository(private val api: MoySkladApi) {
     }
 
     suspend fun addItemByHref(doc: DocInfo, productHref: String, quantity: Double): AddResult = apiCall {
-        val product = api.assortment(filter = "id=$productHref").rows().firstOrNull()
+        // Фильтр id= принимает только UUID, полный href даёт 400 (ошибка 1014).
+        val product = api.assortment(filter = "id=${uuidOf(productHref)}").rows().firstOrNull()
             ?: throw ApiException("Товар не найден на сервере МойСклад")
         addToDocument(doc, product, quantity)
     }
@@ -312,7 +313,8 @@ class DocumentRepository(private val api: MoySkladApi) {
         val result = HashMap<String, ItemInfo>()
         for (chunk in hrefs.chunked(ID_BATCH)) {
             val rows = try {
-                api.assortment(filter = chunk.joinToString(",") { "id=$it" }, limit = ID_BATCH).rows()
+                // Только UUID, условия разделяются «;» (через «,» и с полным href API отвечает 400).
+                api.assortment(filter = chunk.joinToString(";") { "id=${uuidOf(it)}" }, limit = ID_BATCH).rows()
             } catch (e: retrofit2.HttpException) {
                 if (e.code() == 400) continue else throw e
             }
@@ -371,6 +373,10 @@ class DocumentRepository(private val api: MoySkladApi) {
     }
 
     // ---------------------------------------------------------------- служебное
+
+    /** UUID сущности из href (`…/entity/product/<uuid>?expand=…` → `<uuid>`); UUID возвращается как есть. */
+    private fun uuidOf(hrefOrId: String): String =
+        hrefOrId.substringBefore('?').trimEnd('/').substringAfterLast('/')
 
     private suspend fun findProduct(code: String): JsonObject {
         // Только точные фильтры: параметр search отдаёт частичные совпадения и приводит

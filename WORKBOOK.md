@@ -354,3 +354,7 @@
 
 Сборка и релиз:
 - `fbc4923` в `feature/1.5.3`, PR #2 → `Android CI` run 46153963381: success.
+- слияние в `main` merge-коммитом `d543cd0`; run 46154973385 на `main`: success, APK
+  опубликован в служебный релиз `latest` (target `d543cd0`).
+- тег `v1.5.3` на `d543cd0`, релиз «Версия 1.5.3» с файлом `msklad-1.5.3-debug.apk`
+  (29 853 825 байт, versionName `1.5.3`, versionCode 9).

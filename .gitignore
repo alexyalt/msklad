@@ -11,3 +11,6 @@ labelserver/config.ini
 labelserver/pdf/
 labelserver/venv/
 __pycache__/
+*.apk
+.kotlin/
+captures/

@@ -23,7 +23,6 @@
     <string name="label_button">ЭТИК</string>
     <string name="recent_scan_line">%1$d. %2$s %3$s - %4$s - (%5$s)</string>
     <string name="removed_message">Удалено из документа «%1$s»: %2$s × %3$s</string>
-    <string name="product_line">%1$s\nкод: %2$s</string>
     <string name="print_server_hint">Сервер печати этикеток (необязательно)</string>
     <string name="print_server_helper">Адрес компьютера в Tailscale/ZeroTier, например 100.64.0.5 или 100.64.0.5:5000. Пусто: кнопка ЭТИК скрыта.</string>
     <string name="error_print_server">Неверный адрес: ожидается IP или имя, при необходимости с портом</string>
@@ -46,7 +45,6 @@
     <string name="pending_count">не передано: %1$d</string>
     <string name="offline_empty">Синхронизаций ещё не было. Остатки загружаются при включении «Офлайн» на экране сканирования.</string>
     <string name="offline_summary">%1$s — %2$d наим. — %3$s</string>
-    <string name="offline_loaded_at">Обновлено: %1$s</string>
     <string name="offline_pending_in_snapshot">Не передано в документы: %1$d поз.</string>
     <string name="doc_move">пер</string>
     <string name="doc_supply">опр</string>

@@ -43,4 +43,35 @@
     <string name="mode_scanner">Сканер</string>
     <string name="mode_mixed">Смешанный</string>
     <string name="mode_keyboard">Клавиатура</string>
+
+    <!-- 1.5: офлайн-режим и документы корректировки -->
+    <string name="offline_mode">Офлайн</string>
+    <string name="sync_description">Синхронизировать</string>
+    <string name="pending_count">не передано: %1$d</string>
+    <string name="offline_sync_button">Офлайн Синхронизация</string>
+    <string name="offline_empty">Локальная копия ещё не загружена</string>
+    <string name="offline_summary">%1$s — %2$d наим. — %3$s</string>
+    <string name="offline_loaded_at">Обновлено: %1$s</string>
+    <string name="offline_pending_in_snapshot">Не передано в документы: %1$d поз.</string>
+    <string name="doc_move">пер</string>
+    <string name="doc_supply">опр</string>
+    <string name="doc_loss">спис</string>
+    <string name="doc_move_title">Перемещение</string>
+    <string name="doc_supply_title">Оприходование</string>
+    <string name="doc_loss_title">Списание</string>
+    <string name="supply_number_or_id">Номер или ID оприходования</string>
+    <string name="loss_number_or_id">Номер или ID списания</string>
+    <string name="result_line_store">%1$s → %2$s → %3$s</string>
+    <string name="error_code_required">Введите код или штрихкод товара</string>
+    <string name="error_quantity_invalid">Некорректное количество: нужно число больше нуля</string>
+    <string name="error_unknown">Неизвестная ошибка</string>
+    <string name="error_unexpected">Неожиданная ошибка: %1$s</string>
+    <string name="error_document_not_configured">Документ «%1$s» не задан в настройках</string>
+    <string name="offline_no_data">Локальная копия остатков не загружена. Нажмите «Офлайн Синхронизация» на стартовом экране.</string>
+    <string name="offline_product_missing">Товар «%1$s» не найден в локальной копии остатков</string>
+    <string name="offline_insufficient">Недостаточно товаров (в локальной копии: %1$s)</string>
+    <string name="sync_skipped">Не задан документ для: %1$s. Данные остались локально.</string>
+    <string name="sync_aborted">Синхронизация прервана: %1$s\nДанные сохранены локально.</string>
+    <string name="sync_done">Данные переданы: %1$d поз.</string>
+    <string name="sync_nothing">Остатки обновлены, передавать нечего</string>
 </resources>

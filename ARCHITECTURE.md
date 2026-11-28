@@ -1,0 +1,93 @@
+# ARCHITECTURE — msklad scanner
+
+## Обзор
+
+Android-приложение (Kotlin, single-module `app`) — сканер штрихкодов для учёта товаров в МойСклад.
+Работает с документами «Перемещение» (`entity/move`), «Оприходование» (`entity/supply`) и
+«Списание» (`entity/loss`): ищет товар по штрихкоду/коду/артикулу, добавляет позиции в документ,
+показывает остатки «ИЗ → В». С версии 1.5 умеет работать с локальной копией остатков (офлайн-режим)
+и выгружать накопленные позиции в документы по кнопке синхронизации.
+
+Стек: Kotlin 2.0.20, AGP 8.5.2, compileSdk 34, minSdk 24, ViewBinding, Material 3,
+Retrofit 2 + Gson + OkHttp, CameraX + ML Kit barcode, корутины + StateFlow.
+
+## Карта модулей
+
+| Пакет | Файл | Назначение |
+|---|---|---|
+| `api` | `MoySkladApi.kt` | Retrofit-интерфейс: `entity/{type}/{id}`, `entity/{type}`, `report/stock/all`, `entity/assortment` |
+| `api` | `ApiFactory.kt` | OkHttp + Basic auth + `RateLimitInterceptor` (2 запроса/сек) |
+| `api` | `ApiException.kt` | `ApiException`, `apiCall {}` — единый маппинг ошибок в русские сообщения |
+| `api` | `Json.kt` | Хелперы Gson: `obj`, `str`, `rows`, `href`, `metaType` |
+| `data` | `DocumentRepository.kt` | Вся бизнес-логика МойСклад: поиск документа, добавление/удаление позиций, остатки, сбор офлайн-снимка |
+| `data` | `OfflineStore.kt` | Персистенция офлайн-снимка, очереди неотправленных позиций и резолвнутых документов (SharedPreferences + Gson) |
+| `data` | `OfflineModels.kt` | `DocumentType`, `DocInfo`, `OfflineItem`, `PendingLine`, `OfflineSnapshot` |
+| `data` | `SettingsStore.kt` | Настройки: логин, пароль, номер/ID перемещения, оприходования, списания, адрес сервера печати |
+| `data` | `Format.kt` | Форматирование количеств (`formatQuantity`, `withUom`) |
+| `data` | `LabelClient.kt` | HTTP-клиент сервера печати этикеток |
+| `ui` | `SettingsActivity` + `SettingsViewModel` | Стартовый экран: креды, документы, кнопка «Начать», «Офлайн Синхронизация» + сводка |
+| `ui` | `MainActivity` + `MainViewModel` | Экран сканирования: камера, ввод, переключатель офлайн, кнопка синхронизации, выбор документа |
+| `ui` | `LabelActivity` + `LabelViewModel` | Печать этикеток |
+| `ui` | `SoundPlayer` | Звуки скана/успеха/ошибки |
+| `labelserver/` | `server.py` | Вспомогательный Flask-сервер печати для Windows (SumatraPDF) |
+
+## Точки входа
+
+- `SettingsActivity` — LAUNCHER. Сохраняет настройки, резолвит документы (перемещение обязательно,
+  оприходование/списание — если заданы), кладёт `DocInfo` в кэш `OfflineStore`, при нажатии «Начать»
+  открывает `MainActivity`.
+- `MainActivity` — экран сканирования. Получает `DocInfo` перемещения через Intent (process death safe),
+  документы оприходования/списания читает из `OfflineStore`.
+- `LabelActivity` — открывается с экрана сканирования, если в настройках задан сервер печати.
+
+## Потоки данных
+
+### Онлайн-скан
+`MainActivity` (камера/клавиатура) → `MainViewModel.submit(code, qty)` → `DocumentRepository.addItem(doc, …)`
+→ `entity/assortment` (поиск товара) → `entity/{type}/{id}` (позиции) → `report/stock/all` (остатки)
+→ `PUT entity/{type}/{id}` (позиции) → `AddResult` → `ResultState.Success` → отрисовка «ИЗ → В» + uom.
+
+### Офлайн-снимок («Офлайн Синхронизация» на стартовом экране)
+`SettingsViewModel.downloadOffline()` → `DocumentRepository.loadSnapshot(move, supply, loss)`:
+1. `report/stock/all?filter=store=<source>` (постранично) — остатки исходного склада;
+2. то же для целевого склада;
+3. `entity/{supply|loss}/{id}?expand=positions.assortment` — позиции документов корректировки;
+4. объединение href → `entity/assortment?filter=id=a,b,c…` батчами по 50 — название, код, артикул, штрихкод, ед. изм.;
+5. `OfflineStore.save(snapshot)` + сводка «склад — кол-во наименований — количество товаров».
+
+### Офлайн-скан и синхронизация
+Скан в офлайн-режиме → поиск по локальному индексу (barcode → code → article) → проверка локального
+остатка → `PendingLine` в `OfflineSnapshot.pending` → мгновенный результат без сети.
+Кнопка «Синхронизировать» → `DocumentRepository.pushPending(...)` в порядке
+**оприходование → списание → перемещение** → при ошибке прерывание с сохранением очереди →
+при успехе очистка очереди и повторная загрузка снимка.
+
+## Внешние зависимости
+
+- МойСклад JSON API 1.2 (`https://api.moysklad.ru/api/remap/1.2/`), Basic auth, лимит 2 запроса/сек
+  (`RateLimitInterceptor`).
+- CameraX 1.3.4 + ML Kit barcode-scanning 17.3.0.
+- Сервер печати этикеток (опционально, свой Flask в `labelserver/`).
+- GitHub Actions: сборка `assembleDebug`, публикация APK в релиз `latest` из `main`.
+
+## Известные ограничения
+
+- Нет юнит/инструментальных тестов; проверка — сборка в CI.
+- Офлайн-снимок — плоская копия на момент загрузки; конкурентные изменения на сервере не мержатся
+  (конфликты при синхронизации разрешает сервер, ошибка показывается пользователю целиком).
+- Ошибки уровня отдельных позиций (списание/перемещение товара, которого нет на складе) при
+  синхронизации прерывают всю пачку, без точечной подсветки строк — перенесено на следующую итерацию.
+- Штрихкоды в офлайн-снимке доступны только если успел отработать батч `entity/assortment?filter=id=…`;
+  при его сбое поиск идёт по коду и артикулу.
+- `labelActivity` требует сетевого сервера печати; в офлайне не работает.
+
+## Журнал изменений архитектуры
+
+- 1.5 — `MoveRepository` заменён на `DocumentRepository` (поддержка move/supply/loss);
+  добавлены `OfflineStore`, `OfflineModels`, офлайн-режим в `MainViewModel`; `AddResult` расширен
+  полями `uom`, `docType`, `storeBefore`, `storeAfter`; в `SettingsStore` добавлены
+  `supplyInput`/`lossInput`; `MoySkladApi` получил generic-эндпоинты документов и постраничный отчёт.
+- 1.4 — список последних сканов на 50 позиций, режимы ввода (сканер/смешанный/клавиатура).
+- 1.3 — экранная цифровая клавиатура, имя до 50 символов, версия в настройках.
+- 1.2 — печать этикеток через внешний сервер.
+- 1.1 — ограничение частоты запросов, сессия сканирования.

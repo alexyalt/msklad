@@ -36,6 +36,7 @@ import ru.msklad.scanner.data.DocumentType
 import ru.msklad.scanner.data.OfflineStore
 import ru.msklad.scanner.data.SettingsStore
 import ru.msklad.scanner.data.StoreRef
+import ru.msklad.scanner.data.journalLetter
 import ru.msklad.scanner.data.withUom
 import ru.msklad.scanner.databinding.ActivityMainBinding
 import java.util.concurrent.ExecutorService
@@ -121,9 +122,18 @@ class MainActivity : AppCompatActivity() {
                 launch { viewModel.sounds.collect { onSound(it) } }
                 launch { viewModel.clearInput.collect { clearInput() } }
                 launch { viewModel.recent.collect { renderRecent(it) } }
-                launch { viewModel.offline.collect { binding.offlineSwitch.isChecked = it } }
+                launch {
+                    viewModel.offline.collect {
+                        binding.offlineSwitch.isChecked = it
+                        renderSyncButton()
+                    }
+                }
                 launch { viewModel.docType.collect { syncDocButtons(it) } }
-                launch { viewModel.syncing.collect { binding.syncButton.isEnabled = !it } }
+                launch {
+                    viewModel.syncing.collect {
+                        renderSyncButton()
+                    }
+                }
                 launch { viewModel.pendingCount.collect { renderPending(it) } }
             }
         }
@@ -358,10 +368,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderPending(count: Int) {
-        binding.pendingLabel.visibility = if (count > 0) View.VISIBLE else View.GONE
+        val show = count > 0 && viewModel.offline.value
+        binding.pendingLabel.visibility = if (show) View.VISIBLE else View.GONE
         binding.pendingLabel.text = getString(R.string.pending_count, count)
     }
 
+    /** Выгрузка очереди нужна только в офлайн-режиме: в онлайне данные уходят сразу. */
+    private fun renderSyncButton() {
+        val offline = viewModel.offline.value
+        binding.syncButton.isEnabled = offline && !viewModel.syncing.value
+        binding.syncButton.alpha = if (offline) 1f else 0.35f
+        if (!offline) {
+            binding.pendingLabel.visibility = View.GONE
+        } else {
+            renderPending(viewModel.pendingCount.value)
+        }
+    }
+
+    /**
+     * Журнал сканирований: одна строка на одно сканирование, с порядковым номером и буквой
+     * операции (П — перемещение, О — оприходование, С — списание). Товар, отсканированный
+     * несколько раз, больше не склеивается в одну строку.
+     */
     private fun renderRecent(entries: List<ScanEntry>) {
         binding.recentList.removeAllViews()
         entries.forEachIndexed { index, entry ->
@@ -369,16 +397,18 @@ class MainActivity : AppCompatActivity() {
             row.findViewById<TextView>(R.id.recentText).text = getString(
                 R.string.recent_scan_line,
                 index + 1,
+                entry.docType.journalLetter,
                 entry.code,
                 entry.name.take(RECENT_NAME_LENGTH),
                 withUom(entry.quantity, entry.uom),
             )
             row.findViewById<Button>(R.id.recentRemove).setOnClickListener {
-                viewModel.removeScanned(entry.productHref)
+                viewModel.removeScanned(entry)
             }
             binding.recentList.addView(row)
         }
-        binding.recentScroll.scrollTo(0, 0)
+        // Новые сканирования дописываются снизу — держим последнюю строку в поле зрения.
+        binding.recentScroll.post { binding.recentScroll.fullScroll(View.FOCUS_DOWN) }
     }
 
     private fun setTextOrHide(view: TextView, text: String?) {

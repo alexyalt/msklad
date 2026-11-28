@@ -12,6 +12,17 @@ enum class DocumentType(val apiName: String, val hasTarget: Boolean) {
     LOSS("loss", false),
 }
 
+/**
+ * Буква операции для журнала сканирований: П — перемещение, О — оприходование, С — списание.
+ * Нужна, чтобы в одной ленте различать операции разных типов.
+ */
+val DocumentType.journalLetter: String
+    get() = when (this) {
+        DocumentType.MOVE -> "П"
+        DocumentType.SUPPLY -> "О"
+        DocumentType.LOSS -> "С"
+    }
+
 data class StoreRef(val href: String, val name: String)
 
 /**

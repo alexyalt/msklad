@@ -98,11 +98,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var lastScanAt = 0L
     private var resetJob: Job? = null
     private val session = LinkedHashMap<String, ScanEntry>()
+    private var internalBarcodesOnly = false
 
     fun init(move: DocInfo) {
         if (::move.isInitialized) return
         this.move = move
         val settings = SettingsStore(getApplication()).load()
+        internalBarcodesOnly = settings.internalBarcodesOnly
         repository = DocumentRepository(ApiFactory.create(settings.login, settings.password))
         offlineStore = OfflineStore(getApplication())
         docs = offlineStore.docs() + (DocumentType.MOVE to move)
@@ -130,6 +132,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (code == lastScanCode && now - lastScanAt < DEBOUNCE_MS) return false
         lastScanCode = code
         lastScanAt = now
+        // Режим «только внутренние штрихкоды»: этикетки производителей (EAN-13) не принимаем.
+        // Ручной ввод кода или артикула этот фильтр не затрагивает.
+        if (internalBarcodesOnly && !isInternalBarcode(code)) {
+            fail(text(R.string.barcode_not_internal, code.trim()))
+            return false
+        }
         _sounds.trySend(Sound.SCAN)
         submit(code, quantityText)
         return true
@@ -451,6 +459,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _sounds.trySend(Sound.ERROR)
     }
 
+    private fun isInternalBarcode(code: String) = code.trim().startsWith(INTERNAL_BARCODE_PREFIX)
+
     private fun parseQuantity(text: String): Double? {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return 1.0
@@ -463,5 +473,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         const val HIGHLIGHT_MS = 3000L
         const val RECENT_LIMIT = 50
         const val EPSILON = 1e-9
+        const val INTERNAL_BARCODE_PREFIX = "2"
     }
 }

@@ -1,9 +1,14 @@
 package ru.msklad.scanner.data
 
-/** Тип документа МойСклад, с которым работает приложение. */
+/**
+ * Тип документа МойСклад, с которым работает приложение.
+ *
+ * [apiName] — путь в API 1.2, а не бытовое название: оприходование — это `enter`
+ * (`supply` — это Приёмка, другой документ), списание — `loss`, перемещение — `move`.
+ */
 enum class DocumentType(val apiName: String, val hasTarget: Boolean) {
     MOVE("move", true),
-    SUPPLY("supply", false),
+    SUPPLY("enter", false),
     LOSS("loss", false),
 }
 

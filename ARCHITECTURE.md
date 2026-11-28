@@ -3,7 +3,7 @@
 ## Обзор
 
 Android-приложение (Kotlin, single-module `app`) — сканер штрихкодов для учёта товаров в МойСклад.
-Работает с документами «Перемещение» (`entity/move`), «Оприходование» (`entity/supply`) и
+Работает с документами «Перемещение» (`entity/move`), «Оприходование» (`entity/enter`) и
 «Списание» (`entity/loss`): ищет товар по штрихкоду/коду/артикулу, добавляет позиции в документ,
 показывает остатки «ИЗ → В». С версии 1.5 умеет работать с локальной копией остатков (офлайн-режим)
 и выгружать накопленные позиции в документы по кнопке синхронизации.
@@ -15,7 +15,7 @@ Retrofit 2 + Gson + OkHttp, CameraX + ML Kit barcode, корутины + StateFl
 
 | Пакет | Файл | Назначение |
 |---|---|---|
-| `api` | `MoySkladApi.kt` | Retrofit-интерфейс: `entity/{type}/{id}`, `entity/{type}`, `report/stock/all`, `entity/assortment` |
+| `api` | `MoySkladApi.kt` | Retrofit-интерфейс: `entity/{type}/{id}`, `entity/{type}`, `report/stock/all`, `entity/assortment`, `entity/uom`, `entity/store` |
 | `api` | `ApiFactory.kt` | OkHttp + Basic auth + `RateLimitInterceptor` (2 запроса/сек) |
 | `api` | `ApiException.kt` | `ApiException`, `apiCall {}` — единый маппинг ошибок в русские сообщения |
 | `api` | `Json.kt` | Хелперы Gson: `obj`, `str`, `rows`, `href`, `metaType` |
@@ -23,7 +23,7 @@ Retrofit 2 + Gson + OkHttp, CameraX + ML Kit barcode, корутины + StateFl
 | `data` | `OfflineStore.kt` | Персистенция офлайн-снимка, очереди неотправленных позиций и резолвнутых документов (SharedPreferences + Gson) |
 | `data` | `OfflineModels.kt` | `DocumentType`, `DocInfo`, `OfflineItem`, `PendingLine`, `OfflineSnapshot` |
 | `data` | `SettingsStore.kt` | Настройки: логин, пароль, номер/ID перемещения, оприходования, списания, адрес сервера печати |
-| `data` | `Format.kt` | Форматирование количеств (`formatQuantity`, `withUom`) |
+| `data` | `Format.kt` | Форматирование количеств (`formatQuantity`, `withUom` — количество с единицей измерения) |
 | `data` | `LabelClient.kt` | HTTP-клиент сервера печати этикеток |
 | `ui` | `SettingsActivity` + `SettingsViewModel` | Стартовый экран: креды, документы, кнопка «Начать», «Офлайн Синхронизация» + сводка |
 | `ui` | `MainActivity` + `MainViewModel` | Экран сканирования: камера, ввод, переключатель офлайн, кнопка синхронизации, выбор документа |
@@ -42,6 +42,12 @@ Retrofit 2 + Gson + OkHttp, CameraX + ML Kit barcode, корутины + StateFl
 
 ## Потоки данных
 
+### Единицы измерения
+`product.uom` в API — объект `{"meta":{"href":"…/entity/uom/<uuid>"}}` без имени, поэтому `uomName()`
+сначала пробует раскрытое поле `name`, затем ищет id в справочнике `entity/uom` (загружается один раз
+за сессию, кэш `uomCache`). Используется в добавлении позиции, поиске товара, офлайн-снимке и списке
+последних сканов.
+
 ### Онлайн-скан
 `MainActivity` (камера/клавиатура) → `MainViewModel.submit(code, qty)` → `DocumentRepository.addItem(doc, …)`
 → `entity/assortment` (поиск товара) → `entity/{type}/{id}` (позиции) → `report/stock/all` (остатки)
@@ -51,8 +57,9 @@ Retrofit 2 + Gson + OkHttp, CameraX + ML Kit barcode, корутины + StateFl
 `SettingsViewModel.downloadOffline()` → `DocumentRepository.loadSnapshot(move, supply, loss)`:
 1. `report/stock/all?filter=store=<source>` (постранично) — остатки исходного склада;
 2. то же для целевого склада;
-3. `entity/{supply|loss}/{id}?expand=positions.assortment` — позиции документов корректировки;
-4. объединение href → `entity/assortment?filter=id=a,b,c…` батчами по 50 — название, код, артикул, штрихкод, ед. изм.;
+3. `entity/{enter|loss}/{id}?expand=positions.assortment` — позиции документов корректировки;
+4. объединение href → `entity/assortment?filter=id=a,b,c…` батчами по 50 — название, код, артикул, штрихкод, ед. изм.
+   (единица измерения в API приходит только как meta-ссылка, имена берутся из справочника `entity/uom`);
 5. `OfflineStore.save(snapshot)` + сводка «склад — кол-во наименований — количество товаров».
 
 ### Офлайн-скан и синхронизация
@@ -80,9 +87,19 @@ Retrofit 2 + Gson + OkHttp, CameraX + ML Kit barcode, корутины + StateFl
 - Штрихкоды в офлайн-снимке доступны только если успел отработать батч `entity/assortment?filter=id=…`;
   при его сбое поиск идёт по коду и артикулу.
 - `labelActivity` требует сетевого сервера печати; в офлайне не работает.
+- Режим «только внутренние штрихкоды» фильтрует лишь камеру: ручной ввод и коды/артикулы проходят всегда.
+- Единицы измерения кэшируются на сессию репозитория; при недоступном справочнике `entity/uom`
+  количество выводится без единицы, сканирование не прерывается.
 
 ## Журнал изменений архитектуры
 
+- 1.5.1 — оприходование исправлено на `entity/enter` (`supply` — это Приёмка, другой документ);
+  добавлено разрешение единиц измерения через справочник `entity/uom` с кэшем на сессию (в API `uom`
+  у товара — meta-ссылка без имени, из-за чего единицы не выводились); чтение документа устойчиво к
+  неподдерживаемому `expand` (фолбэк без раскрытия + дочитывание имени склада через `entity/store/{id}`);
+  в настройках появился режим «только внутренние штрихкоды» (сканирование принимает лишь коды,
+  начинающиеся с `2`, EAN-13 производителей игнорируется); формат строки результата —
+  `ИЗ (10 шт) - (1 шт) - В (2 шт)`, для корректировок `было (10 шт) - (-1 шт) - стало (9 шт)`.
 - 1.5 — `MoveRepository` заменён на `DocumentRepository` (поддержка move/supply/loss);
   добавлены `OfflineStore`, `OfflineModels`, офлайн-режим в `MainViewModel`; `AddResult` расширен
   полями `uom`, `docType`, `storeBefore`, `storeAfter`; в `SettingsStore` добавлены

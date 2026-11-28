@@ -2,6 +2,7 @@ package ru.msklad.scanner.data
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import kotlinx.coroutines.CancellationException
 import ru.msklad.scanner.api.ApiException
 import ru.msklad.scanner.api.MoySkladApi
 import ru.msklad.scanner.api.apiCall
@@ -16,27 +17,45 @@ data class SyncOutcome(val sent: Int, val skipped: List<PendingLine>)
 
 class DocumentRepository(private val api: MoySkladApi) {
 
+    private var uomCache: Map<String, String>? = null
+
     // ---------------------------------------------------------------- документы
 
     suspend fun findDocument(type: DocumentType, numberOrId: String): DocInfo = apiCall {
         val input = numberOrId.trim()
         if (input.isEmpty()) throw emptyMessage(type)
         val doc = if (UUID_REGEX.matches(input)) {
-            try {
-                api.document(type.apiName, input.lowercase(), expand(type))
-            } catch (e: retrofit2.HttpException) {
-                if (e.code() == 404) throw notFound(type) else throw e
-            }
+            requestDocument(type, input.lowercase())
         } else {
-            val found = api.documents(type.apiName, "name=$input", expand(type)).rows().firstOrNull()
+            val found = requestList(type, "name=$input").rows().firstOrNull()
                 ?: throw notFound(type)
             // Строка списка может не содержать раскрытых складов — дочитываем документ целиком.
-            api.document(type.apiName, found.str("id").orEmpty(), expand(type))
+            requestDocument(type, found.str("id").orEmpty())
         }
         toDocInfo(type, doc)
     }
 
-    private fun toDocInfo(type: DocumentType, doc: JsonObject): DocInfo {
+    /**
+     * У `move` склады раскрываются через expand, у `enter` и `loss` expand может не поддерживаться.
+     * На 400 повторяем запрос без раскрытия — имя склада тогда дочитаем отдельно.
+     */
+    private suspend fun requestDocument(type: DocumentType, id: String): JsonObject = try {
+        api.document(type.apiName, id, expand(type))
+    } catch (e: retrofit2.HttpException) {
+        when (e.code()) {
+            404 -> throw notFound(type)
+            400 -> api.document(type.apiName, id, null)
+            else -> throw e
+        }
+    }
+
+    private suspend fun requestList(type: DocumentType, filter: String): JsonObject = try {
+        api.documents(type.apiName, filter, expand(type))
+    } catch (e: retrofit2.HttpException) {
+        if (e.code() == 400) api.documents(type.apiName, filter, null) else throw e
+    }
+
+    private suspend fun toDocInfo(type: DocumentType, doc: JsonObject): DocInfo {
         val id = doc.str("id")
         if (id.isNullOrBlank()) throw notFound(type)
         val name = doc.str("name").orEmpty()
@@ -68,7 +87,7 @@ class DocumentRepository(private val api: MoySkladApi) {
             throw ApiException("Позиция «${product.str("name").orEmpty()}» не является товаром или модификацией")
         }
         val productHref = product.href() ?: throw ApiException("У товара нет ссылки meta")
-        val uom = product.obj("uom")?.str("name").orEmpty()
+        val uom = uomName(product.obj("uom"))
 
         val docJson = api.document(doc.type.apiName, doc.id, "positions")
         val applied = docJson.get("applicable")?.takeIf { it.isJsonPrimitive }?.asBoolean ?: false
@@ -148,7 +167,7 @@ class DocumentRepository(private val api: MoySkladApi) {
         ProductInfo(
             name = product.str("name").orEmpty(),
             code = product.str("code").orEmpty(),
-            uom = product.obj("uom")?.str("name").orEmpty(),
+            uom = uomName(product.obj("uom")),
         )
     }
 
@@ -230,7 +249,7 @@ class DocumentRepository(private val api: MoySkladApi) {
                     name = row.str("name") ?: previous?.name.orEmpty(),
                     code = row.str("code") ?: previous?.code.orEmpty(),
                     article = row.str("article") ?: previous?.article.orEmpty(),
-                    uom = row.obj("uom")?.str("name") ?: previous?.uom.orEmpty(),
+                    uom = uomName(row.obj("uom")).ifBlank { previous?.uom.orEmpty() },
                     qty = (previous?.qty ?: 0.0) + qty,
                 )
             }
@@ -290,7 +309,7 @@ class DocumentRepository(private val api: MoySkladApi) {
                     code = row.str("code").orEmpty(),
                     article = row.str("article").orEmpty(),
                     barcode = barcode.orEmpty(),
-                    uom = row.obj("uom")?.str("name").orEmpty(),
+                    uom = uomName(row.obj("uom")),
                 )
             }
         }
@@ -391,14 +410,50 @@ class DocumentRepository(private val api: MoySkladApi) {
         return result
     }
 
-    private fun JsonObject.store(field: String, type: DocumentType): StoreRef {
+    private suspend fun JsonObject.store(field: String, type: DocumentType): StoreRef {
         val store = obj(field)
         val href = store?.href()
-        val name = store?.str("name")
-        if (href == null || name == null) {
-            throw ApiException("В документе «${title(type)}» не указан склад ($field)")
-        }
+            ?: throw ApiException("В документе «${title(type)}» не указан склад ($field)")
+        val name = store.str("name")?.takeIf { it.isNotBlank() } ?: storeName(href)
         return StoreRef(href, name)
+    }
+
+    /** Склад без раскрытого имени дочитываем отдельным запросом `entity/store/{id}`. */
+    private suspend fun storeName(href: String): String = try {
+        api.store(href.substringAfterLast('/')).str("name").orEmpty()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        ""
+    }
+
+    /**
+     * Единица измерения товара. В API `uom` — это meta-ссылка без имени, поэтому имя берём
+     * из раскрытого объекта, а если его нет — из справочника `entity/uom` по id из ссылки.
+     */
+    private suspend fun uomName(element: JsonObject?): String {
+        if (element == null) return ""
+        element.str("name")?.takeIf { it.isNotBlank() }?.let { return it }
+        val href = element.href() ?: return ""
+        return uomDictionary()[href.substringAfterLast('/')].orEmpty()
+    }
+
+    /** Справочник единиц измерения грузим один раз за сессию. */
+    private suspend fun uomDictionary(): Map<String, String> {
+        uomCache?.let { return it }
+        val map = HashMap<String, String>()
+        try {
+            api.uoms(limit = UOM_LIMIT).rows().forEach { row ->
+                val id = row.str("id") ?: return@forEach
+                map[id] = row.str("name").orEmpty()
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Справочник недоступен — работаем без единиц измерения, не ломая сканирование.
+        }
+        if (map.isNotEmpty()) uomCache = map
+        return map
     }
 
     private fun insufficient(available: Double) =
@@ -421,6 +476,7 @@ class DocumentRepository(private val api: MoySkladApi) {
         const val PAGE_LIMIT = 1000
         const val MAX_PAGES = 20
         const val ID_BATCH = 50
+        const val UOM_LIMIT = 100
         val SYNC_ORDER = listOf(DocumentType.SUPPLY, DocumentType.LOSS, DocumentType.MOVE)
         val SEARCH_FIELDS = listOf("barcode", "code", "article")
         val BARCODE_FIELDS = listOf("ean13", "ean8", "code128", "gtin", "gtin13", "itf14")

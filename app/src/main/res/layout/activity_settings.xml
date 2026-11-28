@@ -145,31 +145,22 @@
             android:layout_height="56dp"
             android:text="@string/start" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/offlineSyncButton"
-            style="?attr/materialButtonOutlinedStyle"
+        <!-- Результат последней синхронизации офлайн-режима (запускается переключателем на экране сканирования). -->
+        <TextView
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="@string/offline_sync_button" />
+            android:text="@string/last_sync_title"
+            android:textAppearance="?attr/textAppearanceTitleSmall" />
 
         <TextView
             android:id="@+id/offlineText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="4dp"
             android:text="@string/offline_empty"
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:textColor="@color/text_secondary" />
-
-        <ProgressBar
-            android:id="@+id/offlineProgress"
-            style="?android:attr/progressBarStyle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="8dp"
-            android:visibility="gone" />
 
         <ProgressBar
             android:id="@+id/progress"

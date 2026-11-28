@@ -33,12 +33,10 @@ class SettingsActivity : AppCompatActivity() {
             binding.lossEdit.setText(saved.lossInput)
             binding.printServerEdit.setText(saved.printServer)
             binding.internalBarcodeSwitch.isChecked = saved.internalBarcodesOnly
-            renderOfflineLines(viewModel.savedSummary())
         }
         binding.versionText.text =
             getString(R.string.app_version, packageManager.getPackageInfo(packageName, 0).versionName)
         binding.startButton.setOnClickListener { collectSettings()?.let(viewModel::start) }
-        binding.offlineSyncButton.setOnClickListener { collectSettings()?.let(viewModel::downloadOffline) }
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -53,18 +51,19 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun render(state: SettingsState) {
-        busy = state.loading || state.offlineLoading
+        busy = state.loading
         binding.progress.visibility = if (state.loading) View.VISIBLE else View.GONE
-        binding.offlineProgress.visibility = if (state.offlineLoading) View.VISIBLE else View.GONE
         binding.startButton.isEnabled = !state.loading
-        // «Офлайн остатки» доступна всегда: переключатель офлайна живёт только на экране сканирования.
-        binding.offlineSyncButton.isEnabled = !busy
 
-        val error = state.error ?: state.offlineError
+        val error = state.error
         binding.errorText.visibility = if (error == null) View.GONE else View.VISIBLE
         binding.errorText.text = error.orEmpty()
+    }
 
-        if (state.offlineLines.isNotEmpty()) renderOfflineLines(state.offlineLines)
+    /** Итог последней синхронизации обновляется при каждом возврате с экрана сканирования. */
+    override fun onResume() {
+        super.onResume()
+        renderOfflineLines(viewModel.savedSummary())
     }
 
     private fun renderOfflineLines(lines: List<String>) {

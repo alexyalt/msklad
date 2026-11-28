@@ -14,11 +14,9 @@ import ru.msklad.scanner.api.ApiFactory
 import ru.msklad.scanner.data.DocInfo
 import ru.msklad.scanner.data.DocumentRepository
 import ru.msklad.scanner.data.DocumentType
-import ru.msklad.scanner.data.OfflineSnapshot
 import ru.msklad.scanner.data.OfflineStore
 import ru.msklad.scanner.data.Settings
 import ru.msklad.scanner.data.SettingsStore
-import ru.msklad.scanner.data.formatQuantity
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -26,9 +24,6 @@ import java.util.Locale
 data class SettingsState(
     val loading: Boolean = false,
     val error: String? = null,
-    val offlineLoading: Boolean = false,
-    val offlineError: String? = null,
-    val offlineLines: List<String> = emptyList(),
 )
 
 class SettingsViewModel(app: Application) : AndroidViewModel(app) {
@@ -43,10 +38,21 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun savedSettings() = store.load()
 
-    /** Сводка уже скачанной локальной копии — показываем при открытии экрана. */
+    /**
+     * Результат последней синхронизации офлайн-режима (запускается переключателем на экране
+     * сканирования) + неотправленные позиции, если они остались.
+     */
     fun savedSummary(): List<String> {
-        val snapshot = offlineStore.load()
-        return if (snapshot.hasData) summary(snapshot) else emptyList()
+        val app = getApplication<Application>()
+        val at = offlineStore.lastSyncAt()
+        val lines = offlineStore.lastSyncLines().toMutableList()
+        if (at > 0) {
+            val time = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(at))
+            lines.add(0, app.getString(R.string.last_sync_at, time))
+        }
+        val pending = offlineStore.load().pending.size
+        if (pending > 0) lines.add(app.getString(R.string.offline_pending_in_snapshot, pending))
+        return lines
     }
 
     fun start(settings: Settings) {
@@ -66,39 +72,6 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                 _state.value = _state.value.copy(loading = false, error = e.message)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(loading = false, error = unexpected(e))
-            }
-        }
-    }
-
-    /**
-     * «Офлайн Синхронизация»: скачиваем остатки обоих складов и позиции документов
-     * оприходования/списания, чтобы потом работать без сети.
-     */
-    fun downloadOffline(settings: Settings) {
-        if (_state.value.offlineLoading) return
-        store.save(settings)
-        _state.value = _state.value.copy(offlineLoading = true, offlineError = null, offlineLines = emptyList())
-        viewModelScope.launch {
-            try {
-                val repository = newRepository(settings)
-                val move = repository.findDocument(DocumentType.MOVE, settings.moveInput)
-                val extra = resolveExtra(repository, settings, strict = true)
-                val supply = extra.firstOrNull { it.type == DocumentType.SUPPLY }
-                val loss = extra.firstOrNull { it.type == DocumentType.LOSS }
-                offlineStore.saveDocs(listOf(move) + extra)
-
-                val fresh = repository.loadSnapshot(move, supply, loss)
-                // Очередь неотправленных позиций не теряем при обновлении остатков.
-                val snapshot = fresh.copy(pending = offlineStore.load().pending)
-                offlineStore.save(snapshot)
-                _state.value = _state.value.copy(
-                    offlineLoading = false,
-                    offlineLines = summary(snapshot),
-                )
-            } catch (e: ApiException) {
-                _state.value = _state.value.copy(offlineLoading = false, offlineError = e.message)
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(offlineLoading = false, offlineError = unexpected(e))
             }
         }
     }
@@ -134,30 +107,4 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         R.string.error_unexpected,
         e.message ?: e::class.java.simpleName,
     )
-
-    private fun summary(snapshot: OfflineSnapshot): List<String> {
-        val app = getApplication<Application>()
-        val lines = mutableListOf(
-            app.getString(
-                R.string.offline_summary,
-                snapshot.sourceName,
-                snapshot.sourceCount,
-                formatQuantity(snapshot.sourceTotal),
-            ),
-            app.getString(
-                R.string.offline_summary,
-                snapshot.targetName,
-                snapshot.targetCount,
-                formatQuantity(snapshot.targetTotal),
-            ),
-        )
-        if (snapshot.savedAt > 0) {
-            val time = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(snapshot.savedAt))
-            lines.add(app.getString(R.string.offline_loaded_at, time))
-        }
-        if (snapshot.pending.isNotEmpty()) {
-            lines.add(app.getString(R.string.offline_pending_in_snapshot, snapshot.pending.size))
-        }
-        return lines
-    }
 }

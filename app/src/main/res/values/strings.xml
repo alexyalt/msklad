@@ -44,8 +44,7 @@
     <string name="offline_mode">Офлайн</string>
     <string name="sync_description">Синхронизировать</string>
     <string name="pending_count">не передано: %1$d</string>
-    <string name="offline_sync_button">Офлайн остатки</string>
-    <string name="offline_empty">Локальная копия ещё не загружена</string>
+    <string name="offline_empty">Синхронизаций ещё не было. Остатки загружаются при включении «Офлайн» на экране сканирования.</string>
     <string name="offline_summary">%1$s — %2$d наим. — %3$s</string>
     <string name="offline_loaded_at">Обновлено: %1$s</string>
     <string name="offline_pending_in_snapshot">Не передано в документы: %1$d поз.</string>
@@ -63,7 +62,7 @@
     <string name="error_unknown">Неизвестная ошибка</string>
     <string name="error_unexpected">Неожиданная ошибка: %1$s</string>
     <string name="error_document_not_configured">Документ «%1$s» не задан в настройках</string>
-    <string name="offline_no_data">Локальная копия остатков не загружена. Нажмите «Офлайн остатки» на стартовом экране.</string>
+    <string name="offline_no_data">Локальная копия остатков не загружена. Выключите и снова включите «Офлайн» при наличии связи.</string>
     <string name="offline_product_missing">Товар «%1$s» не найден в локальной копии остатков</string>
     <string name="offline_insufficient">Недостаточно товаров (в локальной копии: %1$s)</string>
     <string name="sync_skipped">Не задан документ для: %1$s. Данные остались локально.</string>
@@ -82,9 +81,25 @@
     <string name="no">НЕТ</string>
     <string name="journal_clear">Очистить журнал</string>
     <string name="journal_clear_confirm_title">Очистка журнала</string>
-    <string name="journal_clear_confirm_text">Очистить журнал последних операций? Документы в МойСклад и очередь офлайн-синхронизации не изменятся.</string>
+    <string name="journal_clear_confirm_text">Очистить журнал последних операций? Неотправленные офлайн-сканы (выделены жирным) будут удалены из памяти и не попадут в МойСклад. Документы в МойСклад не изменятся.</string>
     <string name="journal_cleared">Журнал очищен</string>
     <string name="remove_offline_already_sent">Эта позиция уже выгружена в МойСклад. Удалить её можно в онлайн-режиме.</string>
     <string name="sync_auto_done">Офлайн выключен. Выгружено позиций: %1$d</string>
     <string name="sync_auto_failed">Офлайн не выключен — синхронизация не прошла: %1$s\nДанные сохранены локально.</string>
+    <string name="sync_time_short">%1$s</string>
+    <string name="offline_loaded">Остатки загружены %1$s</string>
+    <string name="offline_load_failed">Офлайн не включён — не удалось загрузить остатки: %1$s</string>
+    <string name="offline_load_failed_old">Остатки не обновлены (%1$s). Работа по копии от %2$s</string>
+    <string name="offline_off_nothing">Офлайн выключен</string>
+    <string name="offline_remnants_cleared">Локальные остатки удалены</string>
+    <string name="sync_failed_lines">Не принято сервером: %1$d поз. (%2$s) — выделены красным в журнале</string>
+    <string name="sync_failed_reason">Причина: %1$s</string>
+    <string name="sync_pending_left">Осталось в очереди: %1$d поз.</string>
+    <string name="journal_cleared_pending">Удалено неотправленных офлайн-позиций: %1$d</string>
+    <string name="export_title">Офлайн-сканы (√ — разделитель, √√ — конец строки)</string>
+    <string name="export_empty">Неотправленных офлайн-сканов нет</string>
+    <string name="export_description">Выгрузить офлайн-сканы текстом</string>
+    <string name="close">Закрыть</string>
+    <string name="last_sync_title">Последняя синхронизация</string>
+    <string name="last_sync_at">Время: %1$s</string>
 </resources>

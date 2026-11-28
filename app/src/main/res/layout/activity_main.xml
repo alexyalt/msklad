@@ -67,6 +67,27 @@
             android:visibility="gone" />
 
         <ImageButton
+            android:id="@+id/exportButton"
+            android:layout_width="40dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/export_description"
+            android:src="@drawable/ic_export"
+            android:visibility="gone" />
+
+        <!-- Время последней синхронизации — мелко, слева от стрелок. -->
+        <TextView
+            android:id="@+id/syncTimeLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:gravity="end"
+            android:maxLines="1"
+            android:textColor="@color/text_secondary"
+            android:textSize="10sp"
+            android:visibility="gone" />
+
+        <ImageButton
             android:id="@+id/syncButton"
             android:layout_width="44dp"
             android:layout_height="44dp"
@@ -264,7 +285,11 @@
             android:lines="3"
             android:maxLines="3"
             android:textColor="@color/text_secondary"
-            android:textSize="14sp" />
+            android:textSize="14sp"
+            app:autoSizeMaxTextSize="14sp"
+            app:autoSizeMinTextSize="9sp"
+            app:autoSizeStepGranularity="0.5sp"
+            app:autoSizeTextType="uniform" />
 
         <TextView
             android:id="@+id/resultCode"

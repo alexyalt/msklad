@@ -19,14 +19,20 @@ import ru.msklad.scanner.data.AddResult
 import ru.msklad.scanner.data.DocInfo
 import ru.msklad.scanner.data.DocumentRepository
 import ru.msklad.scanner.data.DocumentType
+import ru.msklad.scanner.data.OfflineExport
 import ru.msklad.scanner.data.OfflineSnapshot
 import ru.msklad.scanner.data.OfflineStore
 import ru.msklad.scanner.data.PendingLine
 import ru.msklad.scanner.data.ScanEntry
 import ru.msklad.scanner.data.ScanJournal
 import ru.msklad.scanner.data.SettingsStore
+import ru.msklad.scanner.data.SyncOutcome
+import ru.msklad.scanner.data.journalLetter
 import ru.msklad.scanner.data.formatQuantity
 import ru.msklad.scanner.data.withUom
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 sealed interface ResultState {
     data object Idle : ResultState
@@ -34,7 +40,11 @@ sealed interface ResultState {
     data class Success(val result: AddResult) : ResultState
     data class Removed(val entry: ScanEntry) : ResultState
     data class Error(val message: String) : ResultState
-    data class Synced(val message: String) : ResultState
+    /**
+     * Итог синхронизации / служебное сообщение. Выводится в блок названия и кода (под кнопками П/О/С),
+     * а не в нижнюю зону, которую частично перекрывает журнал. [detail] — одна строка под основным текстом.
+     */
+    data class Synced(val message: String, val detail: String = "", val error: Boolean = false) : ResultState
 }
 
 enum class InputMode { SCANNER, MIXED, KEYBOARD }
@@ -74,6 +84,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _pendingCount = MutableStateFlow(0)
     val pendingCount: StateFlow<Int> = _pendingCount
 
+    /** Время последней синхронизации (загрузка остатков или выгрузка очереди), 0 — не было. */
+    private val _lastSyncAt = MutableStateFlow(0L)
+    val lastSyncAt: StateFlow<Long> = _lastSyncAt
+
+    /** Ключи `тип|href` строк очереди, которые сервер отверг при последней выгрузке (в журнале — красным). */
+    private val _failedKeys = MutableStateFlow<Set<String>>(emptySet())
+    val failedKeys: StateFlow<Set<String>> = _failedKeys
+
     private val _sounds = Channel<Sound>(Channel.BUFFERED)
     val sounds = _sounds.receiveAsFlow()
 
@@ -102,7 +120,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         offlineStore = OfflineStore(getApplication())
         docs = offlineStore.docs() + (DocumentType.MOVE to move)
         snapshot = offlineStore.load()
+        // Остатки, оставшиеся от прошлых версий в онлайне, не нужны: при включении офлайна они грузятся заново.
+        if (!settings.offlineMode && snapshot.pending.isEmpty() && snapshot.hasData) {
+            offlineStore.clearRemnants()
+            snapshot = offlineStore.load()
+        }
         _pendingCount.value = snapshot.pending.size
+        _lastSyncAt.value = offlineStore.lastSyncAt()
         journal = ScanJournal(getApplication())
         session.clear()
         session.addAll(journal.load())
@@ -117,47 +141,128 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setDocType(type: DocumentType) { _docType.value = type }
 
     /**
-     * Переключатель офлайна на экране сканирования. При выходе из офлайна сначала выгружаем накопленную
-     * очередь: иначе онлайн-сканы пойдут в документ раньше офлайновых и остатки разойдутся. Пока идёт
-     * выгрузка, режим остаётся офлайн (сканы блокирует состояние Loading); при ошибке — остаёмся офлайн,
-     * очередь сохранена, кнопка синхронизации доступна для повтора.
+     * Переключатель офлайна на экране сканирования.
+     *
+     * Включение: сразу загружаем свежие остатки с сервера (переключатель уже стоит «вкл», сканы
+     * заблокированы состоянием Loading). Без связи — если в памяти осталась прежняя копия (например,
+     * с неотправленными строками), работаем с ней; если копии нет, офлайн не включается.
+     *
+     * Выключение: сначала выгружаем накопленную очередь (иначе онлайн-сканы уйдут в документ раньше
+     * офлайновых и остатки разойдутся). Обрыв связи — офлайн остаётся, кнопка синхронизации продолжит
+     * с оставшихся строк. Строки, отвергнутые сервером, остаются в очереди и в журнале (жирные, красные):
+     * их можно удалить из журнала или очистить журнал, после чего офлайн выключается. После полной
+     * выгрузки локальные остатки удаляются, чтобы данные не перемешались со следующей сессией.
      */
     fun setOffline(on: Boolean) {
         if (on == _offline.value) return
-        if (on) {
-            applyOffline(true)
-            snapshot = offlineStore.load()
-            _pendingCount.value = snapshot.pending.size
-            return
+        if (_syncing.value || _result.value == ResultState.Loading) return
+        if (on) enableOffline() else disableOffline()
+    }
+
+    private fun enableOffline() {
+        _offline.value = true
+        viewModelScope.launch {
+            _syncing.value = true
+            startSending()
+            try {
+                val fresh = repository.loadSnapshot(move, docs[DocumentType.SUPPLY], docs[DocumentType.LOSS])
+                // Неотправленные строки (если остались) не теряем.
+                snapshot = fresh.copy(pending = offlineStore.load().pending)
+                offlineStore.save(snapshot)
+                _pendingCount.value = snapshot.pending.size
+                applyOffline(true)
+                val title = text(R.string.offline_loaded, timeText(stampSync()))
+                saveSyncResult(listOf(title) + summaryLines(snapshot))
+                show(ResultState.Synced(title + "\n" + summaryLines(snapshot).joinToString("\n")), Highlight.SUCCESS)
+                _sounds.trySend(Sound.SUCCESS)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val reason = reasonOf(e)
+                snapshot = offlineStore.load()
+                if (snapshot.hasData) {
+                    applyOffline(true)
+                    val time = timeText(snapshot.savedAt)
+                    show(
+                        ResultState.Synced(text(R.string.offline_load_failed_old, reason, time), error = true),
+                        Highlight.ERROR,
+                    )
+                    _sounds.trySend(Sound.ERROR)
+                } else {
+                    _offline.value = false
+                    syncFail(text(R.string.offline_load_failed, reason))
+                }
+            } finally {
+                _syncing.value = false
+            }
         }
+    }
+
+    private fun disableOffline() {
         snapshot = offlineStore.load()
         if (snapshot.pending.isEmpty()) {
-            applyOffline(false)
-            return
-        }
-        if (_syncing.value || _result.value == ResultState.Loading) {
-            // Нельзя выключить офлайн посреди другой операции — возвращаем переключатель на место.
-            _offline.value = true
+            goOnline(sent = 0)
             return
         }
         viewModelScope.launch {
             _syncing.value = true
             startSending()
             try {
-                val sent = pushQueue() ?: return@launch
-                applyOffline(false)
-                show(ResultState.Synced(text(R.string.sync_auto_done, sent)), Highlight.SUCCESS)
-                _sounds.trySend(Sound.SUCCESS)
+                val outcome = pushQueue()
+                if (snapshot.pending.isEmpty()) {
+                    goOnline(outcome.sent)
+                } else {
+                    reportLeftovers(outcome)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _offline.value = true
-                val reason = (e as? ApiException)?.message ?: e.message ?: e::class.java.simpleName
-                fail(text(R.string.sync_auto_failed, reason))
+                val lines = listOf(text(R.string.sync_auto_failed, reasonOf(e)), pendingLeft())
+                stampSync()
+                saveSyncResult(lines)
+                syncFail(lines[0], lines[1])
             } finally {
                 _syncing.value = false
             }
         }
+    }
+
+    /** Очередь пуста: удаляем локальные остатки и переходим в онлайн. */
+    private fun goOnline(sent: Int) {
+        offlineStore.clearRemnants()
+        snapshot = offlineStore.load()
+        _pendingCount.value = 0
+        _failedKeys.value = emptySet()
+        markAllSent()
+        applyOffline(false)
+        val message = if (sent > 0) text(R.string.sync_auto_done, sent) else text(R.string.offline_off_nothing)
+        if (sent > 0) {
+            stampSync()
+            saveSyncResult(listOf(message, text(R.string.offline_remnants_cleared)))
+        }
+        show(ResultState.Synced(message, text(R.string.offline_remnants_cleared)), Highlight.SUCCESS)
+        _sounds.trySend(Sound.SUCCESS)
+    }
+
+    /** Часть строк не ушла (не задан документ / отвергнута сервером): офлайн остаётся, показываем какие. */
+    private fun reportLeftovers(outcome: SyncOutcome) {
+        val lines = mutableListOf<String>()
+        if (outcome.sent > 0) lines.add(text(R.string.sync_done, outcome.sent))
+        if (outcome.skipped.isNotEmpty()) lines.add(text(R.string.sync_skipped, skippedTypes(outcome.skipped)))
+        if (outcome.failed.isNotEmpty()) {
+            lines.add(
+                text(
+                    R.string.sync_failed_lines,
+                    outcome.failed.size,
+                    outcome.failed.joinToString(", ") { it.line.type.journalLetter + " " + it.line.code },
+                )
+            )
+        }
+        val detail = outcome.failed.firstOrNull()?.reason?.let { text(R.string.sync_failed_reason, it) }
+            ?: pendingLeft()
+        stampSync()
+        saveSyncResult(lines + detail)
+        syncFail(lines.joinToString("\n"), detail)
     }
 
     private fun applyOffline(on: Boolean) {
@@ -167,23 +272,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Выгрузка очереди с сохранением прогресса после каждой строки (повтор не задублирует уже отправленное).
-     * Возвращает число отправленных строк или null, если часть строк выгрузить нельзя (не задан документ) —
-     * в этом случае ошибка уже показана.
+     * Отправленные строки снимают жирное выделение в журнале; отвергнутые сервером — помечаются красным.
+     * Исключение наружу — только при потере связи/перегрузке сервера (см. [DocumentRepository.pushPending]).
      */
-    private suspend fun pushQueue(): Int? {
+    private suspend fun pushQueue(): SyncOutcome {
         val pending = snapshot.pending
-        if (pending.isEmpty()) return 0
+        if (pending.isEmpty()) return SyncOutcome(0, emptyList())
+        _failedKeys.value = emptySet()
         val outcome = repository.pushPending(docs, pending, onSent = { line ->
             snapshot = snapshot.withoutPendingType(line.type, line.productHref, line.quantity)
             offlineStore.save(snapshot)
             _pendingCount.value = snapshot.pending.size
+            markSent(line.type, line.productHref)
         })
-        if (outcome.skipped.isNotEmpty()) {
-            _offline.value = true
-            fail(text(R.string.sync_skipped, skippedTypes(outcome.skipped)))
-            return null
-        }
-        return outcome.sent
+        _failedKeys.value = outcome.failed.map { key(it.line.type, it.line.productHref) }.toSet()
+        return outcome
     }
 
     fun onScanned(code: String, quantityText: String): Boolean {
@@ -309,17 +412,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun removeScanned(entry: ScanEntry) {
         if (session.none { it.seq == entry.seq }) return
         if (_result.value == ResultState.Loading) return
-        val queued = offlineStore.load().pendingQuantity(entry.docType, entry.productHref)
-        if (queued >= entry.quantity - EPSILON) {
-            snapshot = offlineStore.load().withoutPendingType(entry.docType, entry.productHref, entry.quantity)
+        val stored = offlineStore.load()
+        val queued = stored.pendingQuantity(entry.docType, entry.productHref)
+        // Офлайн-скан (жирный) снимаем только локально: на сервер он не уходил. Если очередь уже частично
+        // пуста (строку отвергли и она была удалена раньше) — снимаем сколько есть.
+        if (entry.offline || queued >= entry.quantity - EPSILON) {
+            snapshot = stored.withoutPendingType(entry.docType, entry.productHref, minOf(entry.quantity, queued))
             offlineStore.save(snapshot)
             _pendingCount.value = snapshot.pending.size
+            if (snapshot.pendingQuantity(entry.docType, entry.productHref) <= EPSILON) {
+                _failedKeys.value = _failedKeys.value - key(entry.docType, entry.productHref)
+            }
             dropEntry(entry.seq)
             show(ResultState.Removed(entry), Highlight.SUCCESS)
             _sounds.trySend(Sound.SUCCESS)
             return
         }
-        if (_offline.value) return fail(text(R.string.remove_offline_already_sent))
+        if (_offline.value) return syncFail(text(R.string.remove_offline_already_sent))
         val doc = docFor(entry.docType) ?: return fail(notConfigured(entry.docType))
         startSending()
         viewModelScope.launch {
@@ -338,14 +447,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Очистка журнала последних операций (документы и офлайн-очередь не меняются). */
+    /**
+     * Очистка журнала последних операций вместе с внутренней памятью офлайн-сканов (очередью
+     * неотправленных строк). Нужна, чтобы сбросить ошибки синхронизации (например, в офлайне насканировали
+     * больше, чем есть на самом деле) и снова иметь возможность выключить офлайн. Документы в МойСклад
+     * и загруженные остатки не меняются.
+     */
     fun clearJournal() {
+        if (_syncing.value || _result.value == ResultState.Loading) return
+        val dropped = offlineStore.load().pending.size
+        offlineStore.clearPending()
+        snapshot = offlineStore.load()
+        _pendingCount.value = 0
+        _failedKeys.value = emptySet()
         session.clear()
         nextSeq = 1L
         journal.clear()
         publishRecent()
-        show(ResultState.Synced(text(R.string.journal_cleared)), Highlight.NONE)
+        val detail = if (dropped > 0) text(R.string.journal_cleared_pending, dropped) else ""
+        show(ResultState.Synced(text(R.string.journal_cleared), detail), Highlight.NONE)
     }
+
+    /**
+     * Текст для ручного сохранения офлайн-сканов (когда связи нет совсем):
+     * `{буква документа}√{код}√{количество}√√` на строку.
+     */
+    fun exportText(): String = OfflineExport.text(offlineStore.load().pending)
 
     /** Название документа в нижнем регистре для диалога подтверждения. */
     fun documentNameLower(type: DocumentType): String = text(
@@ -359,8 +486,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun quantityText(entry: ScanEntry): String = withUom(entry.quantity, entry.uom)
 
     /**
-     * Синхронизация: выгружаем накопленную очередь (оприходование → списание → перемещение),
-     * затем перезагружаем остатки. При ошибке очередь остаётся локально.
+     * Ручная синхронизация (стрелки, только в офлайне): выгружаем очередь (оприходование → списание →
+     * перемещение), затем перезагружаем остатки — офлайн продолжается уже с актуальными данными.
+     * Обрыв связи — очередь остаётся, повторное нажатие продолжит с оставшихся строк.
      */
     fun sync() {
         if (_syncing.value) return
@@ -369,48 +497,101 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _syncing.value = true
             startSending()
             try {
-                val sent = pushQueue() ?: return@launch
-
+                val outcome = pushQueue()
+                if (snapshot.pending.isNotEmpty()) {
+                    reportLeftovers(outcome)
+                    return@launch
+                }
+                markAllSent()
                 val fresh = repository.loadSnapshot(
                     move,
                     docs[DocumentType.SUPPLY],
                     docs[DocumentType.LOSS],
                 )
-                snapshot = fresh
+                snapshot = fresh.copy(pending = offlineStore.load().pending)
                 offlineStore.save(snapshot)
-
-                val summary = summaryLine(fresh)
-                val message = if (sent > 0) {
-                    text(R.string.sync_done, sent) + "\n" + summary
+                val time = timeText(stampSync())
+                val title = if (outcome.sent > 0) {
+                    text(R.string.sync_done, outcome.sent) + " · " + text(R.string.offline_loaded, time)
                 } else {
-                    text(R.string.sync_nothing) + "\n" + summary
+                    text(R.string.sync_nothing) + " · " + time
                 }
-                show(ResultState.Synced(message), Highlight.SUCCESS)
+                val summary = summaryLines(snapshot)
+                saveSyncResult(listOf(title) + summary)
+                show(ResultState.Synced(title + "\n" + summary.joinToString("\n")), Highlight.SUCCESS)
                 _sounds.trySend(Sound.SUCCESS)
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: ApiException) {
-                fail(text(R.string.sync_aborted, e.message ?: text(R.string.error_unknown)))
             } catch (e: Exception) {
-                fail(text(R.string.sync_aborted, e.message ?: e::class.java.simpleName))
+                val lines = listOf(text(R.string.sync_aborted, reasonOf(e)), pendingLeft())
+                stampSync()
+                saveSyncResult(lines)
+                syncFail(lines[0], lines[1])
             } finally {
                 _syncing.value = false
             }
         }
     }
 
-    private fun summaryLine(snapshot: OfflineSnapshot): String =
+    private fun summaryLines(snapshot: OfflineSnapshot): List<String> = listOf(
         text(
             R.string.offline_summary,
             snapshot.sourceName,
             snapshot.sourceCount,
             formatQuantity(snapshot.sourceTotal),
-        ) + "\n" + text(
+        ),
+        text(
             R.string.offline_summary,
             snapshot.targetName,
             snapshot.targetCount,
             formatQuantity(snapshot.targetTotal),
-        )
+        ),
+    )
+
+    private fun pendingLeft(): String = text(R.string.sync_pending_left, snapshot.pending.size)
+
+    private fun stampSync(): Long {
+        val now = System.currentTimeMillis()
+        _lastSyncAt.value = now
+        return now
+    }
+
+    /** Итог синхронизации сохраняется и показывается также на экране настроек. */
+    private fun saveSyncResult(lines: List<String>) {
+        offlineStore.saveLastSync(_lastSyncAt.value, lines.filter { it.isNotBlank() })
+    }
+
+    private fun timeText(at: Long): String =
+        if (at <= 0) "—" else SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(Date(at))
+
+    private fun reasonOf(e: Exception): String =
+        (e as? ApiException)?.message ?: e.message ?: e::class.java.simpleName
+
+    private fun syncFail(message: String, detail: String = "") {
+        show(ResultState.Synced(message, detail, error = true), Highlight.ERROR)
+        _sounds.trySend(Sound.ERROR)
+    }
+
+    private fun key(type: DocumentType, href: String) = type.name + "|" + href
+
+    /** Строки товара ушли на сервер — снимаем жирное выделение с его офлайн-сканов. */
+    private fun markSent(type: DocumentType, href: String) {
+        var changed = false
+        for (i in session.indices) {
+            val e = session[i]
+            if (e.offline && e.docType == type && e.productHref == href) {
+                session[i] = e.copy(offline = false)
+                changed = true
+            }
+        }
+        if (changed) publishRecent()
+    }
+
+    private fun markAllSent() {
+        if (session.none { it.offline }) return
+        for (i in session.indices) session[i] = session[i].copy(offline = false)
+        publishRecent()
+    }
 
     private fun skippedTypes(lines: List<PendingLine>): String =
         lines.map { it.type }.distinct().joinToString(", ") { documentTitle(it) }
@@ -447,6 +628,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 quantity = added.quantity,
                 docType = added.docType,
                 uom = added.uom,
+                offline = _offline.value,
             )
         )
         while (session.size > ScanJournal.LIMIT) session.removeAt(session.lastIndex)

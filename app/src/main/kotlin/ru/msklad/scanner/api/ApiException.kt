@@ -6,6 +6,25 @@ import java.io.IOException
 
 class ApiException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
+/**
+ * Ошибка, при которой продолжать пакетную выгрузку бессмысленно: нет связи, сервер перегружен (429/5xx)
+ * или не принимает учётные данные (401/403). Остальные ошибки относятся к конкретной строке
+ * (недостаточно товара, товар удалён и т.п.) — выгрузка остальных строк продолжается.
+ */
+val Throwable.abortsBatch: Boolean
+    get() {
+        val root = if (this is ApiException) cause ?: return false else this
+        return when (root) {
+            is IOException -> true
+            is HttpException -> root.code() == 429 || root.code() == 401 || root.code() == 403 || root.code() >= 500
+            else -> false
+        }
+    }
+
+/** Превышен лимит запросов МойСклад (429) — имеет смысл подождать и повторить. */
+val Throwable.isRateLimited: Boolean
+    get() = ((this as? ApiException)?.cause ?: this).let { it is HttpException && it.code() == 429 }
+
 suspend fun <T> apiCall(block: suspend () -> T): T {
     try {
         return block()

@@ -17,6 +17,11 @@ data class ScanEntry(
     val quantity: Double,
     val docType: DocumentType = DocumentType.MOVE,
     val uom: String = "",
+    /**
+     * Скан сделан в офлайне и ещё не передан в МойСклад (в журнале — жирным). Gson для старых записей
+     * без поля оставляет false — это корректно: до 1.6.0 признак не вёлся.
+     */
+    val offline: Boolean = false,
 )
 
 /**

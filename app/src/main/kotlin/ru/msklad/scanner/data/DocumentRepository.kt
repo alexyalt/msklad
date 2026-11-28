@@ -11,9 +11,21 @@ import ru.msklad.scanner.api.metaType
 import ru.msklad.scanner.api.obj
 import ru.msklad.scanner.api.rows
 import ru.msklad.scanner.api.str
+import ru.msklad.scanner.api.abortsBatch
+import ru.msklad.scanner.api.isRateLimited
 
-/** Итог выгрузки офлайн-очереди: сколько строк ушло и что пришлось пропустить. */
-data class SyncOutcome(val sent: Int, val skipped: List<PendingLine>)
+/** Строка очереди, которую сервер отверг (логическая ошибка), с текстом причины. */
+data class FailedLine(val line: PendingLine, val reason: String)
+
+/**
+ * Итог выгрузки офлайн-очереди: сколько строк ушло, какие пропущены (не задан документ)
+ * и какие отвергнуты сервером (например, «недостаточно товара»). Отвергнутые остаются в очереди.
+ */
+data class SyncOutcome(
+    val sent: Int,
+    val skipped: List<PendingLine>,
+    val failed: List<FailedLine> = emptyList(),
+)
 
 class DocumentRepository(private val api: MoySkladApi) {
 
@@ -342,7 +354,13 @@ class DocumentRepository(private val api: MoySkladApi) {
 
     /**
      * Отправляет накопленные в офлайне позиции в документы в порядке
-     * оприходование → списание → перемещение. Ошибка прерывает выгрузку.
+     * оприходование → списание → перемещение.
+     *
+     * Ошибка конкретной строки (недостаточно товара, товар удалён) не прерывает выгрузку — строка
+     * попадает в [SyncOutcome.failed] и остаётся в очереди. Прерывает выгрузку (исключение наружу) только
+     * потеря связи, отказ авторизации или перегрузка сервера: уже отправленные строки к этому моменту
+     * сняты через [onSent], повтор продолжит с оставшихся. На 429 делаем паузу и повторяем строку,
+     * чтобы не заспамить сервер; общий темп дополнительно ограничен RateLimitInterceptor.
      */
     suspend fun pushPending(
         docs: Map<DocumentType, DocInfo>,
@@ -352,6 +370,7 @@ class DocumentRepository(private val api: MoySkladApi) {
     ): SyncOutcome {
         var sent = 0
         val skipped = mutableListOf<PendingLine>()
+        val failed = mutableListOf<FailedLine>()
         for (type in SYNC_ORDER) {
             val lines = pending.filter { it.type == type }
             if (lines.isEmpty()) continue
@@ -362,17 +381,34 @@ class DocumentRepository(private val api: MoySkladApi) {
             }
             for (line in lines) {
                 onProgress(line)
-                if (line.productHref.isNotBlank()) {
-                    addItemByHref(doc, line.productHref, line.quantity)
-                } else {
-                    addItem(doc, line.code, line.quantity)
+                var attempt = 0
+                while (true) {
+                    try {
+                        if (line.productHref.isNotBlank()) {
+                            addItemByHref(doc, line.productHref, line.quantity)
+                        } else {
+                            addItem(doc, line.code, line.quantity)
+                        }
+                        // Сразу сообщаем об отправленной строке: если следующая упадёт, эта не уйдёт повторно.
+                        onSent(line)
+                        sent++
+                        break
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        if (e.isRateLimited && attempt < RATE_LIMIT_RETRIES) {
+                            attempt++
+                            kotlinx.coroutines.delay(RATE_LIMIT_PAUSE_MS * attempt)
+                            continue
+                        }
+                        if (e.abortsBatch) throw e
+                        failed.add(FailedLine(line, e.message ?: e::class.java.simpleName))
+                        break
+                    }
                 }
-                // Сразу сообщаем об отправленной строке: если следующая упадёт, эта не уйдёт повторно.
-                onSent(line)
-                sent++
             }
         }
-        return SyncOutcome(sent, skipped)
+        return SyncOutcome(sent, skipped, failed)
     }
 
     // ---------------------------------------------------------------- служебное
@@ -513,6 +549,8 @@ class DocumentRepository(private val api: MoySkladApi) {
 
     private companion object {
         const val EPSILON = 1e-9
+        const val RATE_LIMIT_RETRIES = 3
+        const val RATE_LIMIT_PAUSE_MS = 3000L
         const val PAGE_LIMIT = 1000
         const val MAX_PAGES = 20
         const val ID_BATCH = 50

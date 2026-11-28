@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 import ru.msklad.scanner.api.ApiException
 import ru.msklad.scanner.api.ApiFactory
 import ru.msklad.scanner.data.LabelClient
-import ru.msklad.scanner.data.MoveRepository
+import ru.msklad.scanner.data.DocumentRepository
 import ru.msklad.scanner.data.ProductInfo
 import ru.msklad.scanner.data.SettingsStore
 
@@ -71,7 +71,7 @@ class LabelViewModel(app: Application) : AndroidViewModel(app) {
         _lookup.value = LookupState.Loading
         viewModelScope.launch {
             _lookup.value = try {
-                val repo = MoveRepository(ApiFactory.create(settings.login, settings.password))
+                val repo = DocumentRepository(ApiFactory.create(settings.login, settings.password))
                 LookupState.Found(repo.lookupProduct(trimmed))
             } catch (e: CancellationException) {
                 throw e

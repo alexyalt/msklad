@@ -20,7 +20,7 @@ class DocumentRepository(private val api: MoySkladApi) {
 
     suspend fun findDocument(type: DocumentType, numberOrId: String): DocInfo = apiCall {
         val input = numberOrId.trim()
-        if (input.isEmpty()) throw ApiException(emptyMessage(type))
+        if (input.isEmpty()) throw emptyMessage(type)
         val doc = if (UUID_REGEX.matches(input)) {
             try {
                 api.document(type.apiName, input.lowercase(), expand(type))

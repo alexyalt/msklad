@@ -355,8 +355,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun syncDocButtons(type: DocumentType) {
-        val id = docButtonId(type)
-        if (!binding.docGroup.isChecked(id)) binding.docGroup.check(id)
+        binding.docGroup.check(docButtonId(type))
     }
 
     private fun renderPending(count: Int) {

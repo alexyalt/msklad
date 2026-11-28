@@ -15,21 +15,25 @@ interface MoySkladApi {
         @Query("limit") limit: Int = 1,
     ): JsonObject
 
-    @GET("entity/move")
-    suspend fun moves(
+    /** Список документов любого типа: move, supply, loss. */
+    @GET("entity/{type}")
+    suspend fun documents(
+        @Path("type") type: String,
         @Query("filter") filter: String,
-        @Query("expand") expand: String,
-        @Query("limit") limit: Int = 2,
+        @Query("expand") expand: String? = null,
+        @Query("limit") limit: Int = 10,
     ): JsonObject
 
-    @GET("entity/move/{id}")
-    suspend fun move(
+    @GET("entity/{type}/{id}")
+    suspend fun document(
+        @Path("type") type: String,
         @Path("id") id: String,
-        @Query("expand") expand: String,
+        @Query("expand") expand: String? = null,
     ): JsonObject
 
-    @PUT("entity/move/{id}")
-    suspend fun updateMove(
+    @PUT("entity/{type}/{id}")
+    suspend fun updateDocument(
+        @Path("type") type: String,
         @Path("id") id: String,
         @Body body: JsonObject,
     ): JsonObject
@@ -38,6 +42,7 @@ interface MoySkladApi {
     suspend fun stock(
         @Query("filter") filter: String,
         @Query("groupBy") groupBy: String? = null,
+        @Query("offset") offset: Int = 0,
         @Query("limit") limit: Int = 1000,
     ): JsonObject
 }

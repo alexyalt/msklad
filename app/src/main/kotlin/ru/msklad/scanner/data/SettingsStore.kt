@@ -7,6 +7,8 @@ data class Settings(
     val password: String,
     val moveInput: String,
     val printServer: String = "",
+    val supplyInput: String = "",
+    val lossInput: String = "",
 )
 
 class SettingsStore(context: Context) {
@@ -18,6 +20,8 @@ class SettingsStore(context: Context) {
         password = prefs.getString(KEY_PASSWORD, "").orEmpty(),
         moveInput = prefs.getString(KEY_MOVE, "").orEmpty(),
         printServer = prefs.getString(KEY_PRINT_SERVER, "").orEmpty(),
+        supplyInput = prefs.getString(KEY_SUPPLY, "").orEmpty(),
+        lossInput = prefs.getString(KEY_LOSS, "").orEmpty(),
     )
 
     fun save(settings: Settings) {
@@ -26,6 +30,8 @@ class SettingsStore(context: Context) {
             .putString(KEY_PASSWORD, settings.password)
             .putString(KEY_MOVE, settings.moveInput)
             .putString(KEY_PRINT_SERVER, settings.printServer)
+            .putString(KEY_SUPPLY, settings.supplyInput)
+            .putString(KEY_LOSS, settings.lossInput)
             .apply()
     }
 
@@ -34,5 +40,7 @@ class SettingsStore(context: Context) {
         const val KEY_PASSWORD = "password"
         const val KEY_MOVE = "move"
         const val KEY_PRINT_SERVER = "print_server"
+        const val KEY_SUPPLY = "supply"
+        const val KEY_LOSS = "loss"
     }
 }

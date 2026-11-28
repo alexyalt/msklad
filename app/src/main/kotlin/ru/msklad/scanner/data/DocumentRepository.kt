@@ -216,9 +216,17 @@ class DocumentRepository(private val api: MoySkladApi) {
         hrefs.addAll(docRows.keys)
         val info = assortmentInfo(hrefs.toList())
 
-        val items = hrefs.map { href ->
+        val items = hrefs.mapNotNull { href ->
             val source = sourceRows[href]
             val targetRow = targetRows[href]
+            // В снимок идёт товар с положительным остатком хотя бы на одном из двух складов
+            // перемещения либо позиция документа корректировки. Нулевые остатки отбрасываем.
+            if (href !in docRows &&
+                (source?.qty ?: 0.0) <= EPSILON &&
+                (targetRow?.qty ?: 0.0) <= EPSILON
+            ) {
+                return@mapNotNull null
+            }
             val known = info[href]
             OfflineItem(
                 href = href,
@@ -255,7 +263,13 @@ class DocumentRepository(private val api: MoySkladApi) {
         val qty: Double,
     )
 
-    /** Все позиции с ненулевым/нулевым остатком по складу, постранично, с суммированием по товару. */
+    /**
+     * Остатки по одному складу, постранично, с суммированием по товару.
+     *
+     * В результат попадают ТОЛЬКО строки с положительным остатком (`qty > EPSILON`): нулевые
+     * и отрицательные (пересорт) в офлайн-снимок не копируются. Полную номенклатуру не
+     * догружаем ни при каких условиях — в рабочей базе тысячи товаров и много складов.
+     */
     private suspend fun stockRows(storeHref: String): Map<String, StockRow> {
         val result = LinkedHashMap<String, StockRow>()
         var offset = 0
@@ -281,7 +295,8 @@ class DocumentRepository(private val api: MoySkladApi) {
             offset += PAGE_LIMIT
             if (offset >= MAX_PAGES * PAGE_LIMIT) break
         }
-        return result
+        // Только положительный остаток: ноль и минус в офлайн-снимок не копируем (AGENTS.md).
+        return result.filterValues { it.qty > EPSILON }
     }
 
     /** Остаток из строки отчёта: обычно `stock`, но при отдельных режимах приходит объект с `value`. */

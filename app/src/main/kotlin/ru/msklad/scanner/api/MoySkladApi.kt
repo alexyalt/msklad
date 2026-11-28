@@ -15,7 +15,7 @@ interface MoySkladApi {
         @Query("limit") limit: Int = 1,
     ): JsonObject
 
-    /** Список документов любого типа: move, supply, loss. */
+    /** Список документов любого типа: move (перемещение), enter (оприходование), loss (списание). */
     @GET("entity/{type}")
     suspend fun documents(
         @Path("type") type: String,
@@ -37,6 +37,14 @@ interface MoySkladApi {
         @Path("id") id: String,
         @Body body: JsonObject,
     ): JsonObject
+
+    /** Справочник единиц измерения: у товара `uom` приходит только как meta-ссылка. */
+    @GET("entity/uom")
+    suspend fun uoms(@Query("limit") limit: Int = 100): JsonObject
+
+    /** Склад отдельным запросом — если в документе он не раскрыт. */
+    @GET("entity/store/{id}")
+    suspend fun store(@Path("id") id: String): JsonObject
 
     @GET("report/stock/all")
     suspend fun stock(

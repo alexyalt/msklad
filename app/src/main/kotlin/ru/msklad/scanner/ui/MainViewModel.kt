@@ -280,7 +280,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (pending.isEmpty()) return SyncOutcome(0, emptyList())
         _failedKeys.value = emptySet()
         val outcome = repository.pushPending(docs, pending, onSent = { line ->
-            snapshot = snapshot.withoutPendingType(line.type, line.productHref, line.quantity)
+            snapshot = snapshot.baked(line)
             offlineStore.save(snapshot)
             _pendingCount.value = snapshot.pending.size
             markSent(line.type, line.productHref)
@@ -338,12 +338,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (docFor(type) == null) return fail(notConfigured(type))
 
         val item = snapshot.find(code) ?: return fail(text(R.string.offline_product_missing, code))
-        val available = snapshot.available(type, item.href)
+        val available = snapshot.available(item.href)
         if (type != DocumentType.SUPPLY && quantity > available + EPSILON) {
             return fail(text(R.string.offline_insufficient, formatQuantity(maxOf(available, 0.0))))
         }
 
-        val pendingBefore = snapshot.pendingQuantity(type, item.href)
+        // Остаток берём «живой»: с учётом всех ещё не отправленных офлайн-операций любого типа,
+        // иначе офлайн-оприходование не видно списанию и перемещению, а офлайн-перемещение — списанию.
+        val sourceBefore = snapshot.sourceQty(item.href)
+        val targetBefore = snapshot.targetQty(item.href)
         val line = PendingLine(
             type = type,
             productHref = item.href,
@@ -355,7 +358,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         snapshot = snapshot.withPending(line)
         offlineStore.save(snapshot)
         _pendingCount.value = snapshot.pending.size
-        val pendingAfter = snapshot.pendingQuantity(type, item.href)
 
         val added = when (type) {
             DocumentType.MOVE -> AddResult(
@@ -365,9 +367,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 productHref = item.href,
                 quantity = quantity,
                 uom = item.uom,
-                sourceAfter = item.sourceQty - pendingAfter,
-                targetAfter = item.targetQty + pendingAfter,
-                storeBefore = item.sourceQty - pendingBefore,
+                sourceAfter = sourceBefore - quantity,
+                targetAfter = targetBefore + quantity,
+                storeBefore = sourceBefore,
             )
 
             DocumentType.LOSS -> AddResult(
@@ -377,9 +379,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 productHref = item.href,
                 quantity = quantity,
                 uom = item.uom,
-                sourceAfter = item.sourceQty - pendingAfter,
+                sourceAfter = sourceBefore - quantity,
                 targetAfter = 0.0,
-                storeBefore = item.sourceQty,
+                storeBefore = sourceBefore,
             )
 
             DocumentType.SUPPLY -> AddResult(
@@ -389,9 +391,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 productHref = item.href,
                 quantity = quantity,
                 uom = item.uom,
-                sourceAfter = item.sourceQty + pendingAfter,
+                sourceAfter = sourceBefore + quantity,
                 targetAfter = 0.0,
-                storeBefore = item.sourceQty + pendingBefore,
+                storeBefore = sourceBefore,
             )
         }
         onAdded(added)
@@ -533,20 +535,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun summaryLines(snapshot: OfflineSnapshot): List<String> = listOf(
-        text(
-            R.string.offline_summary,
-            snapshot.sourceName,
-            snapshot.sourceCount,
-            formatQuantity(snapshot.sourceTotal),
-        ),
-        text(
-            R.string.offline_summary,
-            snapshot.targetName,
-            snapshot.targetCount,
-            formatQuantity(snapshot.targetTotal),
-        ),
-    )
+    private fun summaryLines(snapshot: OfflineSnapshot): List<String> {
+        // Пока очередь не отправлена, показываем «живые» остатки: они уже включают офлайн-операции.
+        val live = snapshot.effective()
+        return listOf(
+            text(
+                R.string.offline_summary,
+                live.sourceName,
+                live.sourceCount,
+                formatQuantity(live.sourceTotal),
+            ),
+            text(
+                R.string.offline_summary,
+                live.targetName,
+                live.targetCount,
+                formatQuantity(live.targetTotal),
+            ),
+        )
+    }
 
     private fun pendingLeft(): String = text(R.string.sync_pending_left, snapshot.pending.size)
 

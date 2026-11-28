@@ -27,43 +27,72 @@ class SettingsActivity : AppCompatActivity() {
             binding.loginEdit.setText(saved.login)
             binding.passwordEdit.setText(saved.password)
             binding.moveEdit.setText(saved.moveInput)
+            binding.supplyEdit.setText(saved.supplyInput)
+            binding.lossEdit.setText(saved.lossInput)
             binding.printServerEdit.setText(saved.printServer)
+            renderOfflineLines(viewModel.savedSummary())
         }
 
-        binding.versionText.text = getString(R.string.app_version, packageManager.getPackageInfo(packageName, 0).versionName)
-        binding.startButton.setOnClickListener { onStartClicked() }
+        binding.versionText.text =
+            getString(R.string.app_version, packageManager.getPackageInfo(packageName, 0).versionName)
+        binding.startButton.setOnClickListener { collectSettings()?.let(viewModel::start) }
+        binding.offlineSyncButton.setOnClickListener { collectSettings()?.let(viewModel::downloadOffline) }
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch { viewModel.state.collect { render(it) } }
                 launch {
-                    viewModel.state.collect { state ->
-                        binding.progress.visibility = if (state.loading) View.VISIBLE else View.GONE
-                        binding.startButton.isEnabled = !state.loading
-                        binding.errorText.visibility = if (state.error == null) View.GONE else View.VISIBLE
-                        binding.errorText.text = state.error
+                    viewModel.started.collect { move ->
+                        startActivity(MainActivity.intent(this@SettingsActivity, move))
                     }
-                }
-                launch {
-                    viewModel.started.collect { move -> startActivity(MainActivity.intent(this@SettingsActivity, move)) }
                 }
             }
         }
     }
 
-    private fun onStartClicked() {
+    private fun render(state: SettingsState) {
+        val busy = state.loading || state.offlineLoading
+        binding.progress.visibility = if (state.loading) View.VISIBLE else View.GONE
+        binding.offlineProgress.visibility = if (state.offlineLoading) View.VISIBLE else View.GONE
+        binding.startButton.isEnabled = !state.loading
+        binding.offlineSyncButton.isEnabled = !busy
+
+        val error = state.error ?: state.offlineError
+        binding.errorText.visibility = if (error == null) View.GONE else View.VISIBLE
+        binding.errorText.text = error.orEmpty()
+
+        if (state.offlineLines.isNotEmpty()) renderOfflineLines(state.offlineLines)
+    }
+
+    private fun renderOfflineLines(lines: List<String>) {
+        binding.offlineText.text =
+            if (lines.isEmpty()) getString(R.string.offline_empty) else lines.joinToString("\n")
+    }
+
+    /** Проверяет поля и собирает настройки; null — если есть ошибки ввода. */
+    private fun collectSettings(): Settings? {
         val login = binding.loginEdit.text?.toString().orEmpty().trim()
         val password = binding.passwordEdit.text?.toString().orEmpty()
         val move = binding.moveEdit.text?.toString().orEmpty().trim()
+        val supply = binding.supplyEdit.text?.toString().orEmpty().trim()
+        val loss = binding.lossEdit.text?.toString().orEmpty().trim()
+        val printServer = binding.printServerEdit.text?.toString().orEmpty().trim()
 
         binding.loginLayout.error = if (login.isEmpty()) getString(R.string.error_required) else null
         binding.passwordLayout.error = if (password.isEmpty()) getString(R.string.error_required) else null
         binding.moveLayout.error = if (move.isEmpty()) getString(R.string.error_required) else null
-        val printServer = binding.printServerEdit.text?.toString().orEmpty().trim()
         val printServerValid = printServer.isEmpty() || PrintServerAddress.parse(printServer) != null
         binding.printServerLayout.error =
             if (printServerValid) null else getString(R.string.error_print_server)
-        if (login.isEmpty() || password.isEmpty() || move.isEmpty() || !printServerValid) return
+        if (login.isEmpty() || password.isEmpty() || move.isEmpty() || !printServerValid) return null
 
-        viewModel.start(Settings(login, password, move, printServer))
+        return Settings(
+            login = login,
+            password = password,
+            moveInput = move,
+            printServer = printServer,
+            supplyInput = supply,
+            lossInput = loss,
+        )
     }
 }

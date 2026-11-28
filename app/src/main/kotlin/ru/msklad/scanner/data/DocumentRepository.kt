@@ -153,9 +153,6 @@ class DocumentRepository(private val api: MoySkladApi) {
         )
     }
 
-    suspend fun undoAdd(doc: DocInfo, added: AddResult) =
-        removeQuantity(doc, added.productHref, added.productName, added.quantity)
-
     suspend fun removeQuantity(doc: DocInfo, productHref: String, productName: String, quantity: Double) = apiCall {
         val document = api.document(doc.type.apiName, doc.id, "positions")
         val positions = JsonArray()

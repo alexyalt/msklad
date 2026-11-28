@@ -65,7 +65,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                 val move = repository.findDocument(DocumentType.MOVE, settings.moveInput)
                 // Кэшируем резолвнутые документы, чтобы экран сканирования не ходил в сеть
                 // за оприходованием и списанием.
-                offlineStore.saveDocs(listOf(move) + resolveExtra(repository, settings, strict = false))
+                offlineStore.saveDocs(listOf(move) + resolveExtra(repository, settings))
                 _state.value = _state.value.copy(loading = false)
                 _started.send(move)
             } catch (e: ApiException) {
@@ -78,22 +78,16 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Оприходование и списание необязательны: пустое поле — документ не резолвим.
-     * [strict] = false используется при обычном «Начать»: ненайденный документ корректировки
-     * не должен блокировать сканирование.
+     * Ненайденный документ корректировки не должен блокировать сканирование.
      */
     private suspend fun resolveExtra(
         repository: DocumentRepository,
         settings: Settings,
-        strict: Boolean = true,
     ): List<DocInfo> {
         val result = mutableListOf<DocInfo>()
         suspend fun resolve(type: DocumentType, input: String) {
             if (input.isBlank()) return
-            if (strict) {
-                result.add(repository.findDocument(type, input))
-            } else {
-                runCatching { repository.findDocument(type, input) }.getOrNull()?.let(result::add)
-            }
+            runCatching { repository.findDocument(type, input) }.getOrNull()?.let(result::add)
         }
         resolve(DocumentType.SUPPLY, settings.supplyInput)
         resolve(DocumentType.LOSS, settings.lossInput)

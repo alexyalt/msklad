@@ -17,7 +17,6 @@ import ru.msklad.scanner.databinding.ActivitySettingsBinding
 class SettingsActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsBinding
     private val viewModel: SettingsViewModel by viewModels()
-    private var busy = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,7 +50,6 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun render(state: SettingsState) {
-        busy = state.loading
         binding.progress.visibility = if (state.loading) View.VISIBLE else View.GONE
         binding.startButton.isEnabled = !state.loading
 

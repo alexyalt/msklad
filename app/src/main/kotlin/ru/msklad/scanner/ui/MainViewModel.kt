@@ -22,33 +22,20 @@ import ru.msklad.scanner.data.DocumentType
 import ru.msklad.scanner.data.OfflineSnapshot
 import ru.msklad.scanner.data.OfflineStore
 import ru.msklad.scanner.data.PendingLine
+import ru.msklad.scanner.data.ScanEntry
+import ru.msklad.scanner.data.ScanJournal
 import ru.msklad.scanner.data.SettingsStore
 import ru.msklad.scanner.data.formatQuantity
+import ru.msklad.scanner.data.withUom
 
 sealed interface ResultState {
     data object Idle : ResultState
     data object Loading : ResultState
     data class Success(val result: AddResult) : ResultState
-    data class Undone(val result: AddResult) : ResultState
     data class Removed(val entry: ScanEntry) : ResultState
     data class Error(val message: String) : ResultState
     data class Synced(val message: String) : ResultState
 }
-
-/**
- * Одна строка журнала сканирований. На каждое сканирование — своя запись: товар может
- * встретиться несколько раз, и суммировать его в общую строку нельзя, иначе не видно,
- * что именно и в каком документе было отсканировано. [seq] — сквозной номер записи.
- */
-data class ScanEntry(
-    val seq: Long,
-    val code: String,
-    val name: String,
-    val productHref: String,
-    val quantity: Double,
-    val docType: DocumentType = DocumentType.MOVE,
-    val uom: String = "",
-)
 
 enum class InputMode { SCANNER, MIXED, KEYBOARD }
 
@@ -75,9 +62,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _inputMode = MutableStateFlow(InputMode.MIXED)
     val inputMode: StateFlow<InputMode> = _inputMode
 
-    private val _canUndo = MutableStateFlow(false)
-    val canUndo: StateFlow<Boolean> = _canUndo
-
     private val _offline = MutableStateFlow(false)
     val offline: StateFlow<Boolean> = _offline
 
@@ -99,13 +83,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _recent = MutableStateFlow<List<ScanEntry>>(emptyList())
     val recent: StateFlow<List<ScanEntry>> = _recent
 
-    private var lastAdded: AddResult? = null
     private var lastScanCode: String? = null
     private var lastScanAt = 0L
     private var resetJob: Job? = null
+    private lateinit var journal: ScanJournal
+    /** Журнал: самые свежие записи первыми. */
     private val session = mutableListOf<ScanEntry>()
     private var nextSeq = 1L
-    private var lastEntrySeq = 0L
     private var internalBarcodesOnly = false
 
     fun init(move: DocInfo) {
@@ -119,6 +103,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         docs = offlineStore.docs() + (DocumentType.MOVE to move)
         snapshot = offlineStore.load()
         _pendingCount.value = snapshot.pending.size
+        journal = ScanJournal(getApplication())
+        session.clear()
+        session.addAll(journal.load())
+        nextSeq = maxOf(journal.nextSeq(), (session.maxOfOrNull { it.seq } ?: 0L) + 1)
+        publishRecent()
     }
 
     fun setScannerOn(on: Boolean) { _scannerOn.value = on }
@@ -127,13 +116,74 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setDocType(type: DocumentType) { _docType.value = type }
 
+    /**
+     * Переключатель офлайна на экране сканирования. При выходе из офлайна сначала выгружаем накопленную
+     * очередь: иначе онлайн-сканы пойдут в документ раньше офлайновых и остатки разойдутся. Пока идёт
+     * выгрузка, режим остаётся офлайн (сканы блокирует состояние Loading); при ошибке — остаёмся офлайн,
+     * очередь сохранена, кнопка синхронизации доступна для повтора.
+     */
     fun setOffline(on: Boolean) {
-        _offline.value = on
-        SettingsStore(getApplication()).setOfflineMode(on)
+        if (on == _offline.value) return
         if (on) {
+            applyOffline(true)
             snapshot = offlineStore.load()
             _pendingCount.value = snapshot.pending.size
+            return
         }
+        snapshot = offlineStore.load()
+        if (snapshot.pending.isEmpty()) {
+            applyOffline(false)
+            return
+        }
+        if (_syncing.value || _result.value == ResultState.Loading) {
+            // Нельзя выключить офлайн посреди другой операции — возвращаем переключатель на место.
+            _offline.value = true
+            return
+        }
+        viewModelScope.launch {
+            _syncing.value = true
+            startSending()
+            try {
+                val sent = pushQueue() ?: return@launch
+                applyOffline(false)
+                show(ResultState.Synced(text(R.string.sync_auto_done, sent)), Highlight.SUCCESS)
+                _sounds.trySend(Sound.SUCCESS)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _offline.value = true
+                val reason = (e as? ApiException)?.message ?: e.message ?: e::class.java.simpleName
+                fail(text(R.string.sync_auto_failed, reason))
+            } finally {
+                _syncing.value = false
+            }
+        }
+    }
+
+    private fun applyOffline(on: Boolean) {
+        _offline.value = on
+        SettingsStore(getApplication()).setOfflineMode(on)
+    }
+
+    /**
+     * Выгрузка очереди с сохранением прогресса после каждой строки (повтор не задублирует уже отправленное).
+     * Возвращает число отправленных строк или null, если часть строк выгрузить нельзя (не задан документ) —
+     * в этом случае ошибка уже показана.
+     */
+    private suspend fun pushQueue(): Int? {
+        val pending = snapshot.pending
+        if (pending.isEmpty()) return 0
+        val outcome = repository.pushPending(docs, pending, onSent = { line ->
+            snapshot = snapshot.withoutPendingType(line.type, line.productHref, line.quantity)
+            offlineStore.save(snapshot)
+            _pendingCount.value = snapshot.pending.size
+        })
+        if (outcome.skipped.isNotEmpty()) {
+            _offline.value = true
+            fail(text(R.string.sync_skipped, skippedTypes(outcome.skipped)))
+            return null
+        }
+        return outcome.sent
     }
 
     fun onScanned(code: String, quantityText: String): Boolean {
@@ -158,8 +208,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val quantity = parseQuantity(quantityText)
             ?: return fail(text(R.string.error_quantity_invalid))
 
-        lastAdded = null
-        _canUndo.value = false
         if (_offline.value) {
             submitOffline(trimmed, quantity)
             return
@@ -247,86 +295,68 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun onAdded(added: AddResult) {
-        lastAdded = added
         recordScan(added)
-        _canUndo.value = true
         show(ResultState.Success(added), Highlight.SUCCESS)
         _sounds.trySend(Sound.SUCCESS)
         _clearInput.trySend(Unit)
     }
 
-    fun undo() {
-        val added = lastAdded ?: return
-        if (_result.value == ResultState.Loading) return
-        if (_offline.value) {
-            snapshot = snapshot.withoutPendingType(added.docType, added.productHref, added.quantity)
-            offlineStore.save(snapshot)
-            _pendingCount.value = snapshot.pending.size
-            lastAdded = null
-            _canUndo.value = false
-            forgetLastScan()
-            show(ResultState.Undone(added), Highlight.SUCCESS)
-            _sounds.trySend(Sound.SUCCESS)
-            return
-        }
-        val doc = docFor(added.docType) ?: return fail(notConfigured(added.docType))
-        _canUndo.value = false
-        startSending()
-        viewModelScope.launch {
-            try {
-                repository.undoAdd(doc, added)
-                lastAdded = null
-                forgetLastScan()
-                show(ResultState.Undone(added), Highlight.SUCCESS)
-                _sounds.send(Sound.SUCCESS)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: ApiException) {
-                _canUndo.value = true
-                fail(e.message ?: text(R.string.error_unknown))
-            } catch (e: Exception) {
-                _canUndo.value = true
-                fail(text(R.string.error_unexpected, e.message ?: e::class.java.simpleName))
-            }
-        }
-    }
-
-    /** Удаляет из документа одну строку журнала — то количество, которое дало это сканирование. */
+    /**
+     * Удаляет из документа одну строку журнала — то количество, которое дало это сканирование.
+     * Если это количество ещё в офлайн-очереди — снимаем его локально (в любом режиме), иначе удаляем
+     * с сервера (только онлайн). Удалить из очереди всю позицию целиком нельзя — только количество строки.
+     */
     fun removeScanned(entry: ScanEntry) {
         if (session.none { it.seq == entry.seq }) return
         if (_result.value == ResultState.Loading) return
-        if (_offline.value) {
-            snapshot = snapshot.withoutPending(entry.docType, entry.productHref)
+        val queued = offlineStore.load().pendingQuantity(entry.docType, entry.productHref)
+        if (queued >= entry.quantity - EPSILON) {
+            snapshot = offlineStore.load().withoutPendingType(entry.docType, entry.productHref, entry.quantity)
             offlineStore.save(snapshot)
             _pendingCount.value = snapshot.pending.size
-            lastAdded = null
-            _canUndo.value = false
             dropEntry(entry.seq)
             show(ResultState.Removed(entry), Highlight.SUCCESS)
             _sounds.trySend(Sound.SUCCESS)
             return
         }
+        if (_offline.value) return fail(text(R.string.remove_offline_already_sent))
         val doc = docFor(entry.docType) ?: return fail(notConfigured(entry.docType))
-        _canUndo.value = false
         startSending()
         viewModelScope.launch {
             try {
                 repository.removeQuantity(doc, entry.productHref, entry.name, entry.quantity)
-                lastAdded = null
                 dropEntry(entry.seq)
                 show(ResultState.Removed(entry), Highlight.SUCCESS)
                 _sounds.send(Sound.SUCCESS)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException) {
-                _canUndo.value = lastAdded != null
                 fail(e.message ?: text(R.string.error_unknown))
             } catch (e: Exception) {
-                _canUndo.value = lastAdded != null
                 fail(text(R.string.error_unexpected, e.message ?: e::class.java.simpleName))
             }
         }
     }
+
+    /** Очистка журнала последних операций (документы и офлайн-очередь не меняются). */
+    fun clearJournal() {
+        session.clear()
+        nextSeq = 1L
+        journal.clear()
+        publishRecent()
+        show(ResultState.Synced(text(R.string.journal_cleared)), Highlight.NONE)
+    }
+
+    /** Название документа в нижнем регистре для диалога подтверждения. */
+    fun documentNameLower(type: DocumentType): String = text(
+        when (type) {
+            DocumentType.MOVE -> R.string.doc_genitive_move
+            DocumentType.SUPPLY -> R.string.doc_genitive_supply
+            DocumentType.LOSS -> R.string.doc_genitive_loss
+        }
+    )
+
+    fun quantityText(entry: ScanEntry): String = withUom(entry.quantity, entry.uom)
 
     /**
      * Синхронизация: выгружаем накопленную очередь (оприходование → списание → перемещение),
@@ -339,20 +369,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _syncing.value = true
             startSending()
             try {
-                val pending = snapshot.pending
-                var sent = 0
-                if (pending.isNotEmpty()) {
-                    val outcome = repository.pushPending(docs, pending)
-                    sent = outcome.sent
-                    // Невыгружаемое (не задан документ) оставляем в очереди и сообщаем пользователю.
-                    snapshot = snapshot.copy(pending = outcome.skipped)
-                    offlineStore.save(snapshot)
-                    _pendingCount.value = snapshot.pending.size
-                    if (outcome.skipped.isNotEmpty()) {
-                        fail(text(R.string.sync_skipped, skippedTypes(outcome.skipped)))
-                        return@launch
-                    }
-                }
+                val sent = pushQueue() ?: return@launch
 
                 val fresh = repository.loadSnapshot(
                     move,
@@ -419,7 +436,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun recordScan(added: AddResult) {
         val seq = nextSeq++
+        // Свежие записи — в начало списка; при переполнении уходит самая старая (в конце).
         session.add(
+            0,
             ScanEntry(
                 seq = seq,
                 code = added.productCode,
@@ -430,15 +449,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 uom = added.uom,
             )
         )
-        while (session.size > SESSION_LIMIT) session.removeAt(0)
-        lastEntrySeq = seq
-        publishRecent()
-    }
-
-    /** Отмена последней операции снимает ровно её строку журнала. */
-    private fun forgetLastScan() {
-        if (lastEntrySeq != 0L) dropEntry(lastEntrySeq)
-        lastEntrySeq = 0L
+        while (session.size > ScanJournal.LIMIT) session.removeAt(session.lastIndex)
         publishRecent()
     }
 
@@ -448,6 +459,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun publishRecent() {
+        if (::journal.isInitialized) journal.save(session, nextSeq)
         _recent.value = session.toList()
     }
 
@@ -484,7 +496,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private companion object {
         const val DEBOUNCE_MS = 1500L
         const val HIGHLIGHT_MS = 3000L
-        const val SESSION_LIMIT = 200
         const val EPSILON = 1e-9
         const val INTERNAL_BARCODE_PREFIX = "2"
     }

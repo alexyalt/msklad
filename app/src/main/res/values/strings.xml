@@ -21,13 +21,9 @@
     <string name="result_idle">Отсканируйте или введите код товара</string>
     <string name="result_line">[%1$s] - (%2$s) - {%3$s}</string>
     <string name="label_button">ЭТИК</string>
-    <string name="undo">✕</string>
-    <string name="undo_description">Отменить последнюю операцию</string>
-    <string name="remove_scan_description">Удалить из перемещения все отсканированные по этой позиции</string>
     <string name="recent_scan_line">%1$d. %2$s %3$s - %4$s - (%5$s)</string>
-    <string name="removed_message">Удалено из перемещения: %1$s × %2$s</string>
+    <string name="removed_message">Удалено из документа «%1$s»: %2$s × %3$s</string>
     <string name="product_line">%1$s\nкод: %2$s</string>
-    <string name="undone_message">Отменено: %1$s × %2$s</string>
     <string name="print_server_hint">Сервер печати этикеток (необязательно)</string>
     <string name="print_server_helper">Адрес компьютера в Tailscale/ZeroTier, например 100.64.0.5 или 100.64.0.5:5000. Пусто: кнопка ЭТИК скрыта.</string>
     <string name="error_print_server">Неверный адрес: ожидается IP или имя, при необходимости с портом</string>
@@ -48,8 +44,7 @@
     <string name="offline_mode">Офлайн</string>
     <string name="sync_description">Синхронизировать</string>
     <string name="pending_count">не передано: %1$d</string>
-    <string name="offline_sync_button">Офлайн Синхронизация</string>
-    <string name="offline_sync_hint">Загрузка остатков во внутреннюю память доступна только в офлайн-режиме. Включите переключатель выше.</string>
+    <string name="offline_sync_button">Офлайн остатки</string>
     <string name="offline_empty">Локальная копия ещё не загружена</string>
     <string name="offline_summary">%1$s — %2$d наим. — %3$s</string>
     <string name="offline_loaded_at">Обновлено: %1$s</string>
@@ -68,7 +63,7 @@
     <string name="error_unknown">Неизвестная ошибка</string>
     <string name="error_unexpected">Неожиданная ошибка: %1$s</string>
     <string name="error_document_not_configured">Документ «%1$s» не задан в настройках</string>
-    <string name="offline_no_data">Локальная копия остатков не загружена. Нажмите «Офлайн Синхронизация» на стартовом экране.</string>
+    <string name="offline_no_data">Локальная копия остатков не загружена. Нажмите «Офлайн остатки» на стартовом экране.</string>
     <string name="offline_product_missing">Товар «%1$s» не найден в локальной копии остатков</string>
     <string name="offline_insufficient">Недостаточно товаров (в локальной копии: %1$s)</string>
     <string name="sync_skipped">Не задан документ для: %1$s. Данные остались локально.</string>
@@ -77,4 +72,19 @@
     <string name="sync_nothing">Остатки обновлены, передавать нечего</string>
     <string name="internal_barcodes_only">Только внутренние штрихкоды</string>
     <string name="internal_barcodes_helper">Учитывать только штрихкоды, начинающиеся с 2 (этикетки МойСклад). Штрихкоды производителей (EAN-13) при сканировании камерой игнорируются. Ручной ввод кода или артикула работает всегда.</string>
+    <string name="remove_confirm_title">Удаление из документа</string>
+    <string name="remove_confirm_text">Удалить из документа &lt;b&gt;%1$s&lt;/b&gt; товар: &lt;b&gt;%2$s&lt;/b&gt; кол-во: &lt;b&gt;%3$s&lt;/b&gt; код: &lt;b&gt;%4$s&lt;/b&gt;</string>
+    <string name="product_code_line">код: %1$s</string>
+    <string name="doc_genitive_move">перемещение</string>
+    <string name="doc_genitive_supply">оприходование</string>
+    <string name="doc_genitive_loss">списание</string>
+    <string name="yes">ДА</string>
+    <string name="no">НЕТ</string>
+    <string name="journal_clear">Очистить журнал</string>
+    <string name="journal_clear_confirm_title">Очистка журнала</string>
+    <string name="journal_clear_confirm_text">Очистить журнал последних операций? Документы в МойСклад и очередь офлайн-синхронизации не изменятся.</string>
+    <string name="journal_cleared">Журнал очищен</string>
+    <string name="remove_offline_already_sent">Эта позиция уже выгружена в МойСклад. Удалить её можно в онлайн-режиме.</string>
+    <string name="sync_auto_done">Офлайн выключен. Выгружено позиций: %1$d</string>
+    <string name="sync_auto_failed">Офлайн не выключен — синхронизация не прошла: %1$s\nДанные сохранены локально.</string>
 </resources>

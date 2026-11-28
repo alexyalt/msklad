@@ -149,7 +149,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="12dp">
+        android:paddingHorizontal="12dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="2dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -231,81 +233,70 @@
         </com.google.android.material.button.MaterialButtonToggleGroup>
     </LinearLayout>
 
+    <!--
+        Зона результата прижата к кнопкам П/О/С (без центрирования и пустого места): 3 строки под
+        наименование, 1 под код, 2 строки под итог сканирования, остаток высоты — под сообщения.
+    -->
     <LinearLayout
         android:id="@+id/resultZone"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="4.2"
-        android:gravity="center"
+        android:gravity="top"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:paddingHorizontal="16dp"
+        android:paddingBottom="4dp">
 
         <ProgressBar
             android:id="@+id/progress"
             style="?android:attr/progressBarStyleHorizontal"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="4dp"
             android:indeterminate="true"
-            android:visibility="gone" />
+            android:visibility="invisible" />
 
         <TextView
-            android:id="@+id/resultProduct"
+            android:id="@+id/resultName"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
             android:ellipsize="end"
             android:gravity="center"
-            android:maxLines="2"
+            android:lines="3"
+            android:maxLines="3"
             android:textColor="@color/text_secondary"
-            android:textSize="14sp"
-            android:visibility="gone"
-            app:autoSizeMaxTextSize="14sp"
-            app:autoSizeMinTextSize="10sp"
-            app:autoSizeStepGranularity="0.5sp"
-            app:autoSizeTextType="uniform" />
+            android:textSize="14sp" />
 
-        <LinearLayout
+        <TextView
+            android:id="@+id/resultCode"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:ellipsize="end"
+            android:gravity="center"
+            android:lines="1"
+            android:maxLines="1"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp" />
 
-            <TextView
-                android:id="@+id/resultLine"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:includeFontPadding="false"
-                android:maxLines="1"
-                android:singleLine="true"
-                android:textColor="@color/text_primary"
-                android:textSize="32sp"
-                android:textStyle="bold"
-                android:visibility="gone"
-                app:autoSizeMaxTextSize="32sp"
-                app:autoSizeMinTextSize="10sp"
-                app:autoSizeStepGranularity="0.5sp"
-                app:autoSizeTextType="uniform" />
-
-            <Button
-                android:id="@+id/undoButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:contentDescription="@string/undo_description"
-                android:minWidth="48dp"
-                android:text="@string/undo"
-                android:textColor="@color/error_red"
-                android:textSize="20sp"
-                android:visibility="gone" />
-        </LinearLayout>
+        <TextView
+            android:id="@+id/resultLine"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:lines="2"
+            android:maxLines="2"
+            android:textColor="@color/text_primary"
+            android:textSize="32sp"
+            android:textStyle="bold"
+            android:visibility="invisible" />
 
         <TextView
             android:id="@+id/resultMessage"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center"
-            android:maxLines="4"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center_horizontal|top"
             android:textColor="@color/text_primary"
             android:textSize="20sp"
             app:autoSizeMaxTextSize="20sp"

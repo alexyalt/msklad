@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="error_red">#C62828</color>
+    <color name="confirm_green">#2E7D32</color>
     <color name="bg_idle">#FFFFFFFF</color>
     <color name="bg_sending">#FFFFF59D</color>
     <color name="bg_success">#FFA5D6A7</color>

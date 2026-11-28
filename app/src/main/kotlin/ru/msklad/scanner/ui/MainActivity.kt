@@ -4,7 +4,9 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Typeface
 import android.os.Bundle
+import android.text.TextUtils
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -14,6 +16,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
@@ -22,9 +25,11 @@ import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
+import androidx.core.text.HtmlCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
@@ -34,6 +39,7 @@ import ru.msklad.scanner.data.AddResult
 import ru.msklad.scanner.data.DocInfo
 import ru.msklad.scanner.data.DocumentType
 import ru.msklad.scanner.data.OfflineStore
+import ru.msklad.scanner.data.ScanEntry
 import ru.msklad.scanner.data.SettingsStore
 import ru.msklad.scanner.data.StoreRef
 import ru.msklad.scanner.data.journalLetter
@@ -51,6 +57,7 @@ class MainActivity : AppCompatActivity() {
     private val barcodeScanner = BarcodeScanning.getClient()
     private var cameraProvider: ProcessCameraProvider? = null
     private var cameraActive = false
+    private var lastTopSeq = -1L
 
     private val cameraPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -84,6 +91,11 @@ class MainActivity : AppCompatActivity() {
                 Snackbar.make(binding.root, R.string.offline_no_data, Snackbar.LENGTH_LONG).show()
             }
             viewModel.setOffline(checked)
+            // При выходе из офлайна сначала идёт выгрузка очереди: пока она не завершилась, режим остаётся
+            // офлайн. StateFlow не переизлучит то же значение, поэтому выравниваем переключатель вручную.
+            if (binding.offlineSwitch.isChecked != viewModel.offline.value) {
+                binding.offlineSwitch.isChecked = viewModel.offline.value
+            }
         }
         binding.syncButton.setOnClickListener { viewModel.sync() }
         binding.docGroup.check(docButtonId(viewModel.docType.value))
@@ -94,7 +106,6 @@ class MainActivity : AppCompatActivity() {
             binding.labelButton.visibility = View.VISIBLE
             binding.labelButton.setOnClickListener { startActivity(Intent(this, LabelActivity::class.java)) }
         }
-        binding.undoButton.setOnClickListener { viewModel.undo() }
         binding.codeEdit.showSoftInputOnFocus = false
         binding.quantityEdit.showSoftInputOnFocus = false
         bindKeys(binding.keypad)
@@ -118,7 +129,6 @@ class MainActivity : AppCompatActivity() {
                 launch { viewModel.inputMode.collect { applyMode(it) } }
                 launch { viewModel.result.collect { render(it) } }
                 launch { viewModel.highlight.collect { applyHighlight(it) } }
-                launch { viewModel.canUndo.collect { binding.undoButton.visibility = if (it) View.VISIBLE else View.GONE } }
                 launch { viewModel.sounds.collect { onSound(it) } }
                 launch { viewModel.clearInput.collect { clearInput() } }
                 launch { viewModel.recent.collect { renderRecent(it) } }
@@ -302,30 +312,28 @@ class MainActivity : AppCompatActivity() {
         val loading = state == ResultState.Loading
         binding.keypadEnter.isEnabled = !loading
         binding.keypadLargeEnter.isEnabled = !loading
-        binding.progress.visibility = if (loading) View.VISIBLE else View.GONE
+        binding.progress.visibility = if (loading) View.VISIBLE else View.INVISIBLE
 
         val added = (state as? ResultState.Success)?.result
-        val undone = (state as? ResultState.Undone)?.result
-        val product = (added ?: undone)?.let { getString(R.string.product_line, it.productName, it.productCode) }
         val line = added?.let { resultLine(it) }
         val message = when (state) {
             ResultState.Idle -> getString(R.string.result_idle)
             is ResultState.Error -> state.message
-            is ResultState.Undone -> getString(
-                R.string.undone_message,
-                state.result.productName,
-                withUom(state.result.quantity, state.result.uom),
-            )
             is ResultState.Removed -> getString(
                 R.string.removed_message,
+                viewModel.documentNameLower(state.entry.docType),
                 state.entry.name,
                 withUom(state.entry.quantity, state.entry.uom),
             )
             is ResultState.Synced -> state.message
             else -> null
         }
-        setTextOrHide(binding.resultProduct, product)
-        setTextOrHide(binding.resultLine, line)
+        // Название (до 3 строк) и код (1 строка) держат зарезервированную высоту, чтобы блок не прыгал.
+        binding.resultName.text = added?.productName.orEmpty()
+        binding.resultCode.text = added?.let { getString(R.string.product_code_line, it.productCode) }.orEmpty()
+        // Итог держит две зарезервированные строки и не схлопывается, когда пуст.
+        binding.resultLine.text = line.orEmpty()
+        binding.resultLine.visibility = if (line.isNullOrEmpty()) View.INVISIBLE else View.VISIBLE
         setTextOrHide(binding.resultMessage, message)
     }
 
@@ -373,11 +381,14 @@ class MainActivity : AppCompatActivity() {
         binding.pendingLabel.text = getString(R.string.pending_count, count)
     }
 
-    /** Выгрузка очереди нужна только в офлайн-режиме: в онлайне данные уходят сразу. */
+    /**
+     * Кнопка синхронизации (стрелки) нужна только в офлайн-режиме: в онлайне данные уходят сразу,
+     * поэтому там кнопка полностью скрыта, а не просто неактивна.
+     */
     private fun renderSyncButton() {
         val offline = viewModel.offline.value
+        binding.syncButton.visibility = if (offline) View.VISIBLE else View.GONE
         binding.syncButton.isEnabled = offline && !viewModel.syncing.value
-        binding.syncButton.alpha = if (offline) 1f else 0.35f
         if (!offline) {
             binding.pendingLabel.visibility = View.GONE
         } else {
@@ -386,29 +397,75 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Журнал сканирований: одна строка на одно сканирование, с порядковым номером и буквой
-     * операции (П — перемещение, О — оприходование, С — списание). Товар, отсканированный
-     * несколько раз, больше не склеивается в одну строку.
+     * Журнал сканирований: одна строка на одно сканирование, самые свежие сверху; номер — сквозной
+     * порядковый номер операции. Буква — тип документа (П/О/С). Автопрокрутки нет: верх списка и так
+     * показывает последние операции. Внизу списка — «Очистить журнал», до неё нужно докрутить.
      */
     private fun renderRecent(entries: List<ScanEntry>) {
         binding.recentList.removeAllViews()
-        entries.forEachIndexed { index, entry ->
+        entries.forEach { entry ->
             val row = layoutInflater.inflate(R.layout.item_recent_scan, binding.recentList, false)
             row.findViewById<TextView>(R.id.recentText).text = getString(
                 R.string.recent_scan_line,
-                index + 1,
+                entry.seq,
                 entry.docType.journalLetter,
                 entry.code,
                 entry.name.take(RECENT_NAME_LENGTH),
                 withUom(entry.quantity, entry.uom),
             )
-            row.findViewById<Button>(R.id.recentRemove).setOnClickListener {
-                viewModel.removeScanned(entry)
-            }
+            row.findViewById<Button>(R.id.recentRemove).setOnClickListener { confirmRemove(entry) }
             binding.recentList.addView(row)
         }
-        // Новые сканирования дописываются снизу — держим последнюю строку в поле зрения.
-        binding.recentScroll.post { binding.recentScroll.fullScroll(View.FOCUS_DOWN) }
+        if (entries.isNotEmpty()) {
+            val clear = layoutInflater.inflate(R.layout.item_journal_clear, binding.recentList, false)
+            clear.findViewById<Button>(R.id.journalClear).setOnClickListener { confirmClearJournal() }
+            binding.recentList.addView(clear)
+        }
+        // Появилась новая операция — возвращаем список к началу, чтобы она была видна (вниз не крутим).
+        val top = entries.firstOrNull()?.seq ?: 0L
+        if (top != lastTopSeq) binding.recentScroll.post { binding.recentScroll.scrollTo(0, 0) }
+        lastTopSeq = top
+    }
+
+    /** Подтверждение удаления строки журнала: ДА — красная, НЕТ — зелёная, переменные жирным. */
+    private fun confirmRemove(entry: ScanEntry) {
+        val message = HtmlCompat.fromHtml(
+            getString(
+                R.string.remove_confirm_text,
+                TextUtils.htmlEncode(viewModel.documentNameLower(entry.docType)),
+                TextUtils.htmlEncode(entry.name),
+                TextUtils.htmlEncode(viewModel.quantityText(entry)),
+                TextUtils.htmlEncode(entry.code),
+            ),
+            HtmlCompat.FROM_HTML_MODE_LEGACY,
+        )
+        showConfirm(R.string.remove_confirm_title, message) { viewModel.removeScanned(entry) }
+    }
+
+    private fun confirmClearJournal() {
+        showConfirm(R.string.journal_clear_confirm_title, getString(R.string.journal_clear_confirm_text)) {
+            viewModel.clearJournal()
+        }
+    }
+
+    private fun showConfirm(title: Int, message: CharSequence, onYes: () -> Unit) {
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton(R.string.yes) { _, _ -> onYes() }
+            .setNegativeButton(R.string.no, null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.apply {
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.error_red))
+                setTypeface(typeface, Typeface.BOLD)
+            }
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.apply {
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.confirm_green))
+                setTypeface(typeface, Typeface.BOLD)
+            }
+        }
+        dialog.show()
     }
 
     private fun setTextOrHide(view: TextView, text: String?) {

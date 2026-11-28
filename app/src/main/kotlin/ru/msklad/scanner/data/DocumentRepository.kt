@@ -348,6 +348,7 @@ class DocumentRepository(private val api: MoySkladApi) {
         docs: Map<DocumentType, DocInfo>,
         pending: List<PendingLine>,
         onProgress: (PendingLine) -> Unit = {},
+        onSent: (PendingLine) -> Unit = {},
     ): SyncOutcome {
         var sent = 0
         val skipped = mutableListOf<PendingLine>()
@@ -366,6 +367,8 @@ class DocumentRepository(private val api: MoySkladApi) {
                 } else {
                     addItem(doc, line.code, line.quantity)
                 }
+                // Сразу сообщаем об отправленной строке: если следующая упадёт, эта не уйдёт повторно.
+                onSent(line)
                 sent++
             }
         }

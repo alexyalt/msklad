@@ -42,4 +42,25 @@
 
 ## Журнал выполнения
 
-- [ ] ветка создана, workbook создан
+- [x] ветка создана, workbook создан; незакоммиченная работа прошлой сессии (OfflineStore, OfflineExport) сохранена `c82ea26`
+- [x] `pushPending`: ошибки строк → `FailedLine`, прерывание только при `abortsBatch` (IOException/401/403/429/5xx),
+      на 429 до 3 повторов с паузой 3/6/9 с (`ApiException.kt`: `abortsBatch`, `isRateLimited`) — `ae…` (см. git log)
+- [x] MainViewModel: enableOffline (загрузка остатков, fallback на старую копию с pending), disableOffline
+      (выгрузка → goOnline: clearRemnants, markAllSent), reportLeftovers (failed → красные в журнале, офлайн не выключается),
+      clearJournal чистит pending, exportText, lastSyncAt, saveSyncResult → OfflineStore.lastSync*
+- [x] MainActivity: Synced/Removed → resultName/resultCode (п.3, п.10), syncTimeLabel (10sp слева от стрелок),
+      exportButton + диалог EditText (keyListener=null, одна кнопка «Закрыть»), bold/красный в журнале
+- [x] Settings: убраны offlineSyncButton/offlineProgress/downloadOffline; блок «Последняя синхронизация» из OfflineStore.lastSync*, обновляется onResume
+- [x] версия 1.6.0 / versionCode 10 — `14e105a`
+- [ ] CI ветки: run 46162175096 (workflow_dispatch)
+
+## Решения
+- Удаление жирной (офлайн) строки журнала всегда локально, даже если очередь по товару меньше (часть ушла) — снимаем min(qty, queued).
+- В онлайне при старте, если pending пуст и остались остатки (от 1.5.x) — clearRemnants().
+- Удаление уже отправленной позиции в офлайне — ошибка в блок названия (syncFail), не в нижнюю зону.
+- Без связи при включении офлайна и при отсутствии старой копии — офлайн не включается (иначе работать не с чем).
+- Экспорт сортирует П/О/С по порядку синхронизации (О → С → П), затем по коду; одна строка на (тип, товар) — количество суммарное.
+
+## Не проверено / на следующую итерацию
+- Работа на устройстве не проверялась (нет эмулятора), только сборка CI.
+

@@ -23,7 +23,7 @@
         android:id="@+id/recentRemove"
         android:layout_width="wrap_content"
         android:layout_height="32dp"
-        android:contentDescription="@string/remove_scan_description"
+        android:contentDescription="@string/remove_confirm_title"
         android:minWidth="40dp"
         android:minHeight="0dp"
         android:paddingVertical="0dp"

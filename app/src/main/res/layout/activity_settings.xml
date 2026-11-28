@@ -145,30 +145,12 @@
             android:layout_height="56dp"
             android:text="@string/start" />
 
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/offlineModeSwitch"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:minHeight="48dp"
-            android:text="@string/offline_mode"
-            android:textSize="16sp" />
-
-        <TextView
-            android:id="@+id/offlineSyncHint"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="4dp"
-            android:text="@string/offline_sync_hint"
-            android:textAppearance="?attr/textAppearanceBodySmall"
-            android:textColor="@color/text_secondary" />
-
         <com.google.android.material.button.MaterialButton
             android:id="@+id/offlineSyncButton"
             style="?attr/materialButtonOutlinedStyle"
             android:layout_width="match_parent"
             android:layout_height="56dp"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="16dp"
             android:text="@string/offline_sync_button" />
 
         <TextView

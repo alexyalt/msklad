@@ -287,12 +287,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onSound(sound: Sound) {
+        // Текст ошибки показывается в блоке результата (render), отдельный Snackbar не нужен.
         sounds.play(sound)
-        if (sound == Sound.ERROR) {
-            (viewModel.result.value as? ResultState.Error)?.let {
-                Snackbar.make(binding.root, it.message, Snackbar.LENGTH_LONG).show()
-            }
-        }
     }
 
     private fun clearInput() {
@@ -321,13 +317,13 @@ class MainActivity : AppCompatActivity() {
         val line = added?.let { resultLine(it) }
         val message = when (state) {
             ResultState.Idle -> getString(R.string.result_idle)
-            is ResultState.Error -> state.message
             else -> null
         }
         // Блок названия (до 3 строк) и кода (1 строка) держит зарезервированную высоту, чтобы блок не прыгал.
         // Сюда же выводятся итоги синхронизации и сообщение об удалении из журнала: нижнюю зону сообщений
         // частично перекрывает журнал.
-        val error = (state as? ResultState.Synced)?.error == true
+        // Ошибка сканирования выводится там же (а не в нижней зоне сообщений, где её перекрывает журнал).
+        val error = (state as? ResultState.Synced)?.error == true || state is ResultState.Error
         val color = ContextCompat.getColor(this, if (error) R.color.error_red else R.color.text_secondary)
         binding.resultName.setTextColor(color)
         binding.resultCode.setTextColor(color)
@@ -335,6 +331,11 @@ class MainActivity : AppCompatActivity() {
             is ResultState.Synced -> {
                 binding.resultName.text = state.message
                 binding.resultCode.text = state.detail
+            }
+
+            is ResultState.Error -> {
+                binding.resultName.text = state.message
+                binding.resultCode.text = ""
             }
 
             is ResultState.Removed -> {
@@ -361,15 +362,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderSyncTime(at: Long) {
         binding.syncTimeLabel.text = if (at > 0) {
-            getString(R.string.sync_time_short, SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(Date(at)))
+            getString(R.string.sync_time_short, SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(at)))
         } else {
             ""
         }
     }
 
     /**
-     * Выгрузка офлайн-сканов текстом для ручного копирования (без разрешений на буфер обмена и файлы):
-     * `{буква документа}√{код}√{количество}√√`. Одна кнопка — «Закрыть».
+     * Выгрузка офлайн-сканов текстом: `{буква документа};{код};{количество};;`.
+     * Поле обычное (редактируемое, без экранной клавиатуры) — в нём работает штатное выделение и
+     * «Копировать»; правка текста в поле ни на что не влияет. Кнопка «Копировать» кладёт весь текст
+     * в буфер обмена (разрешений не требует).
      */
     private fun showExport() {
         val text = viewModel.exportText()
@@ -377,28 +380,40 @@ class MainActivity : AppCompatActivity() {
         val box = EditText(this).apply {
             setText(text)
             hint = getString(R.string.export_empty)
-            // Только чтение: клавиатура не нужна, выделение и «Копировать» — штатным меню системы.
             showSoftInputOnFocus = false
+            isFocusable = true
+            isFocusableInTouchMode = true
+            isLongClickable = true
+            isSingleLine = false
             minLines = 4
             maxLines = 12
+            isVerticalScrollBarEnabled = true
             gravity = android.view.Gravity.TOP or android.view.Gravity.START
             textSize = 14f
             typeface = Typeface.MONOSPACE
-            keyListener = null
         }
         val container = android.widget.FrameLayout(this).apply {
             setPadding(pad, pad / 2, pad, 0)
             addView(box)
         }
-        MaterialAlertDialogBuilder(this)
+        val builder = MaterialAlertDialogBuilder(this)
             .setTitle(R.string.export_title)
             .setView(container)
-            .setPositiveButton(R.string.close, null)
-            .show()
+            .setNegativeButton(R.string.close, null)
+        if (text.isNotEmpty()) {
+            builder.setPositiveButton(R.string.export_copy) { _, _ -> copyToClipboard(text) }
+        }
+        builder.show()
         box.post {
             box.requestFocus()
             box.selectAll()
         }
+    }
+
+    private fun copyToClipboard(text: String) {
+        val clipboard = getSystemService(android.content.ClipboardManager::class.java) ?: return
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText(getString(R.string.export_title), text))
+        android.widget.Toast.makeText(this, R.string.export_copied, android.widget.Toast.LENGTH_SHORT).show()
     }
 
     /**

@@ -96,7 +96,9 @@
     <string name="sync_failed_reason">Причина: %1$s</string>
     <string name="sync_pending_left">Осталось в очереди: %1$d поз.</string>
     <string name="journal_cleared_pending">Удалено неотправленных офлайн-позиций: %1$d</string>
-    <string name="export_title">Офлайн-сканы (√ — разделитель, √√ — конец строки)</string>
+    <string name="export_title">Офлайн-сканы (; — разделитель, ;; — конец строки)</string>
+    <string name="export_copy">Копировать</string>
+    <string name="export_copied">Скопировано в буфер обмена</string>
     <string name="export_empty">Неотправленных офлайн-сканов нет</string>
     <string name="export_description">Выгрузить офлайн-сканы текстом</string>
     <string name="close">Закрыть</string>

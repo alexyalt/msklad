@@ -472,7 +472,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Текст для ручного сохранения офлайн-сканов (когда связи нет совсем):
-     * `{буква документа}√{код}√{количество}√√` на строку.
+     * `{буква документа};{код};{количество};;` на строку.
      */
     fun exportText(): String = OfflineExport.text(offlineStore.load().pending)
 

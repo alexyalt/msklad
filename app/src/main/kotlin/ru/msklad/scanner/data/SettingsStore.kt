@@ -10,6 +10,8 @@ data class Settings(
     val supplyInput: String = "",
     val lossInput: String = "",
     val internalBarcodesOnly: Boolean = false,
+    /** Офлайн-режим запоминаем в настройках: от него зависит доступность офлайн-синхронизации. */
+    val offlineMode: Boolean = false,
 )
 
 class SettingsStore(context: Context) {
@@ -24,6 +26,7 @@ class SettingsStore(context: Context) {
         supplyInput = prefs.getString(KEY_SUPPLY, "").orEmpty(),
         lossInput = prefs.getString(KEY_LOSS, "").orEmpty(),
         internalBarcodesOnly = prefs.getBoolean(KEY_INTERNAL_BARCODES, false),
+        offlineMode = prefs.getBoolean(KEY_OFFLINE_MODE, false),
     )
 
     fun save(settings: Settings) {
@@ -35,7 +38,13 @@ class SettingsStore(context: Context) {
             .putString(KEY_SUPPLY, settings.supplyInput)
             .putString(KEY_LOSS, settings.lossInput)
             .putBoolean(KEY_INTERNAL_BARCODES, settings.internalBarcodesOnly)
+            .putBoolean(KEY_OFFLINE_MODE, settings.offlineMode)
             .apply()
+    }
+
+    /** Переключатель офлайн-режима меняется с двух экранов — пишем один флаг, не трогая остальные поля. */
+    fun setOfflineMode(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_OFFLINE_MODE, enabled).apply()
     }
 
     private companion object {
@@ -46,5 +55,6 @@ class SettingsStore(context: Context) {
         const val KEY_SUPPLY = "supply"
         const val KEY_LOSS = "loss"
         const val KEY_INTERNAL_BARCODES = "internal_barcodes_only"
+        const val KEY_OFFLINE_MODE = "offline_mode"
     }
 }

@@ -35,7 +35,13 @@ sealed interface ResultState {
     data class Synced(val message: String) : ResultState
 }
 
+/**
+ * Одна строка журнала сканирований. На каждое сканирование — своя запись: товар может
+ * встретиться несколько раз, и суммировать его в общую строку нельзя, иначе не видно,
+ * что именно и в каком документе было отсканировано. [seq] — сквозной номер записи.
+ */
 data class ScanEntry(
+    val seq: Long,
     val code: String,
     val name: String,
     val productHref: String,
@@ -97,7 +103,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var lastScanCode: String? = null
     private var lastScanAt = 0L
     private var resetJob: Job? = null
-    private val session = LinkedHashMap<String, ScanEntry>()
+    private val session = mutableListOf<ScanEntry>()
+    private var nextSeq = 1L
+    private var lastEntrySeq = 0L
     private var internalBarcodesOnly = false
 
     fun init(move: DocInfo) {
@@ -105,6 +113,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         this.move = move
         val settings = SettingsStore(getApplication()).load()
         internalBarcodesOnly = settings.internalBarcodesOnly
+        _offline.value = settings.offlineMode
         repository = DocumentRepository(ApiFactory.create(settings.login, settings.password))
         offlineStore = OfflineStore(getApplication())
         docs = offlineStore.docs() + (DocumentType.MOVE to move)
@@ -120,6 +129,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setOffline(on: Boolean) {
         _offline.value = on
+        SettingsStore(getApplication()).setOfflineMode(on)
         if (on) {
             snapshot = offlineStore.load()
             _pendingCount.value = snapshot.pending.size
@@ -133,11 +143,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         lastScanCode = code
         lastScanAt = now
         // Режим «только внутренние штрихкоды»: этикетки производителей (EAN-13) не принимаем.
+        // Пропускаем их молча — это ожидаемое поведение включённого фильтра, а не ошибка.
         // Ручной ввод кода или артикула этот фильтр не затрагивает.
-        if (internalBarcodesOnly && !isInternalBarcode(code)) {
-            fail(text(R.string.barcode_not_internal, code.trim()))
-            return false
-        }
+        if (internalBarcodesOnly && !isInternalBarcode(code)) return false
         _sounds.trySend(Sound.SCAN)
         submit(code, quantityText)
         return true
@@ -256,7 +264,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _pendingCount.value = snapshot.pending.size
             lastAdded = null
             _canUndo.value = false
-            forgetScan(added)
+            forgetLastScan()
             show(ResultState.Undone(added), Highlight.SUCCESS)
             _sounds.trySend(Sound.SUCCESS)
             return
@@ -268,7 +276,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 repository.undoAdd(doc, added)
                 lastAdded = null
-                forgetScan(added)
+                forgetLastScan()
                 show(ResultState.Undone(added), Highlight.SUCCESS)
                 _sounds.send(Sound.SUCCESS)
             } catch (e: CancellationException) {
@@ -283,8 +291,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun removeScanned(productHref: String) {
-        val entry = session[productHref] ?: return
+    /** Удаляет из документа одну строку журнала — то количество, которое дало это сканирование. */
+    fun removeScanned(entry: ScanEntry) {
+        if (session.none { it.seq == entry.seq }) return
         if (_result.value == ResultState.Loading) return
         if (_offline.value) {
             snapshot = snapshot.withoutPending(entry.docType, entry.productHref)
@@ -292,8 +301,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _pendingCount.value = snapshot.pending.size
             lastAdded = null
             _canUndo.value = false
-            session.remove(productHref)
-            publishRecent()
+            dropEntry(entry.seq)
             show(ResultState.Removed(entry), Highlight.SUCCESS)
             _sounds.trySend(Sound.SUCCESS)
             return
@@ -305,8 +313,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 repository.removeQuantity(doc, entry.productHref, entry.name, entry.quantity)
                 lastAdded = null
-                session.remove(productHref)
-                publishRecent()
+                dropEntry(entry.seq)
                 show(ResultState.Removed(entry), Highlight.SUCCESS)
                 _sounds.send(Sound.SUCCESS)
             } catch (e: CancellationException) {
@@ -411,31 +418,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         getApplication<Application>().getString(res, *args)
 
     private fun recordScan(added: AddResult) {
-        val total = (session.remove(added.productHref)?.quantity ?: 0.0) + added.quantity
-        session[added.productHref] = ScanEntry(
-            code = added.productCode,
-            name = added.productName,
-            productHref = added.productHref,
-            quantity = total,
-            docType = added.docType,
-            uom = added.uom,
+        val seq = nextSeq++
+        session.add(
+            ScanEntry(
+                seq = seq,
+                code = added.productCode,
+                name = added.productName,
+                productHref = added.productHref,
+                quantity = added.quantity,
+                docType = added.docType,
+                uom = added.uom,
+            )
         )
+        while (session.size > SESSION_LIMIT) session.removeAt(0)
+        lastEntrySeq = seq
         publishRecent()
     }
 
-    private fun forgetScan(added: AddResult) {
-        val entry = session[added.productHref] ?: return
-        val left = entry.quantity - added.quantity
-        if (left > EPSILON) {
-            session[added.productHref] = entry.copy(quantity = left)
-        } else {
-            session.remove(added.productHref)
-        }
+    /** Отмена последней операции снимает ровно её строку журнала. */
+    private fun forgetLastScan() {
+        if (lastEntrySeq != 0L) dropEntry(lastEntrySeq)
+        lastEntrySeq = 0L
+        publishRecent()
+    }
+
+    private fun dropEntry(seq: Long) {
+        session.removeAll { it.seq == seq }
         publishRecent()
     }
 
     private fun publishRecent() {
-        _recent.value = session.values.reversed().take(RECENT_LIMIT)
+        _recent.value = session.toList()
     }
 
     private fun startSending() {
@@ -471,7 +484,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private companion object {
         const val DEBOUNCE_MS = 1500L
         const val HIGHLIGHT_MS = 3000L
-        const val RECENT_LIMIT = 50
+        const val SESSION_LIMIT = 200
         const val EPSILON = 1e-9
         const val INTERNAL_BARCODE_PREFIX = "2"
     }

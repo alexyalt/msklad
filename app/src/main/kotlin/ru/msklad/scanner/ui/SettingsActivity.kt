@@ -11,11 +11,13 @@ import kotlinx.coroutines.launch
 import ru.msklad.scanner.R
 import ru.msklad.scanner.data.PrintServerAddress
 import ru.msklad.scanner.data.Settings
+import ru.msklad.scanner.data.SettingsStore
 import ru.msklad.scanner.databinding.ActivitySettingsBinding
 
 class SettingsActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsBinding
     private val viewModel: SettingsViewModel by viewModels()
+    private var busy = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -31,8 +33,15 @@ class SettingsActivity : AppCompatActivity() {
             binding.lossEdit.setText(saved.lossInput)
             binding.printServerEdit.setText(saved.printServer)
             binding.internalBarcodeSwitch.isChecked = saved.internalBarcodesOnly
+            binding.offlineModeSwitch.isChecked = saved.offlineMode
             renderOfflineLines(viewModel.savedSummary())
         }
+        binding.offlineModeSwitch.setOnCheckedChangeListener { _, checked ->
+            // Переключатель тот же, что на экране сканирования: храним одно значение в настройках.
+            SettingsStore(this).setOfflineMode(checked)
+            renderOfflineState()
+        }
+        renderOfflineState()
 
         binding.versionText.text =
             getString(R.string.app_version, packageManager.getPackageInfo(packageName, 0).versionName)
@@ -52,17 +61,26 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun render(state: SettingsState) {
-        val busy = state.loading || state.offlineLoading
+        busy = state.loading || state.offlineLoading
         binding.progress.visibility = if (state.loading) View.VISIBLE else View.GONE
         binding.offlineProgress.visibility = if (state.offlineLoading) View.VISIBLE else View.GONE
         binding.startButton.isEnabled = !state.loading
-        binding.offlineSyncButton.isEnabled = !busy
+        binding.offlineSyncButton.isEnabled = !busy && binding.offlineModeSwitch.isChecked
+        binding.offlineSyncButton.alpha = if (binding.offlineModeSwitch.isChecked) 1f else 0.38f
 
         val error = state.error ?: state.offlineError
         binding.errorText.visibility = if (error == null) View.GONE else View.VISIBLE
         binding.errorText.text = error.orEmpty()
 
         if (state.offlineLines.isNotEmpty()) renderOfflineLines(state.offlineLines)
+    }
+
+    /** Кнопка загрузки остатков нужна только в офлайн-режиме — в онлайне остатки не кэшируются. */
+    private fun renderOfflineState() {
+        val on = binding.offlineModeSwitch.isChecked
+        binding.offlineSyncHint.visibility = if (on) View.GONE else View.VISIBLE
+        binding.offlineSyncButton.isEnabled = on && !busy
+        binding.offlineSyncButton.alpha = if (on) 1f else 0.38f
     }
 
     private fun renderOfflineLines(lines: List<String>) {
@@ -95,6 +113,7 @@ class SettingsActivity : AppCompatActivity() {
             supplyInput = supply,
             lossInput = loss,
             internalBarcodesOnly = binding.internalBarcodeSwitch.isChecked,
+            offlineMode = binding.offlineModeSwitch.isChecked,
         )
     }
 }

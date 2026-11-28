@@ -147,16 +147,23 @@ class DocumentRepository(private val api: MoySkladApi) {
         val document = api.document(doc.type.apiName, doc.id, "positions")
         val positions = JsonArray()
         var found = false
+        var left = quantity
         for (position in document.obj("positions")?.rows().orEmpty()) {
-            if (!found && position.obj("assortment")?.href() == productHref) {
+            val copy = position.deepCopy()
+            // Один товар может стоять в документе несколькими строками: вычитаем по порядку,
+            // пока не израсходуем отменяемое количество.
+            if (left > EPSILON && copy.obj("assortment")?.href() == productHref) {
                 found = true
-                val left = (position.get("quantity")?.asDouble ?: 0.0) - quantity
-                if (left > EPSILON) {
-                    positions.add(position.deepCopy().apply { addProperty("quantity", left) })
+                val current = copy.get("quantity")?.asDouble ?: 0.0
+                val rest = current - left
+                left -= current
+                if (rest > EPSILON) {
+                    copy.addProperty("quantity", rest)
+                } else {
+                    continue
                 }
-            } else {
-                positions.add(position.deepCopy())
             }
+            positions.add(copy)
         }
         if (!found) throw ApiException("Позиции «$productName» уже нет в документе")
         api.updateDocument(doc.type.apiName, doc.id, JsonObject().apply { add("positions", positions) })
@@ -242,8 +249,12 @@ class DocumentRepository(private val api: MoySkladApi) {
         while (true) {
             val rows = api.stock(filter = "store=$storeHref", offset = offset, limit = PAGE_LIMIT).rows()
             for (row in rows) {
-                val href = row.obj("assortment")?.href() ?: continue
-                val qty = row.get("stock")?.takeIf { it.isJsonPrimitive }?.asDouble ?: 0.0
+                // В отчёте report/stock/all строка описывает товар напрямую: в meta.href лежит
+                // ссылка на entity/product (или entity/variant), а поля assortment в ответе нет.
+                // Пока здесь читали только assortment, все строки пропускались и остатки
+                // приходили нулевыми — снимок загружался «пустым» без единой ошибки.
+                val href = row.obj("assortment")?.href() ?: row.href() ?: continue
+                val qty = row.stockQuantity()
                 val previous = result[href]
                 result[href] = StockRow(
                     name = row.str("name") ?: previous?.name.orEmpty(),
@@ -258,6 +269,15 @@ class DocumentRepository(private val api: MoySkladApi) {
             if (offset >= MAX_PAGES * PAGE_LIMIT) break
         }
         return result
+    }
+
+    /** Остаток из строки отчёта: обычно `stock`, но при отдельных режимах приходит объект с `value`. */
+    private fun JsonObject.stockQuantity(): Double {
+        val raw = get("stock") ?: get("quantity") ?: return 0.0
+        if (raw.isJsonPrimitive) return raw.asDouble
+        if (!raw.isJsonObject) return 0.0
+        val nested = raw.asJsonObject.get("value") ?: return 0.0
+        return if (nested.isJsonPrimitive) nested.asDouble else 0.0
     }
 
     private suspend fun documentPositions(type: DocumentType, id: String): Map<String, Double> {
@@ -390,18 +410,26 @@ class DocumentRepository(private val api: MoySkladApi) {
     ): JsonArray {
         val existing = doc.obj("positions")?.rows().orEmpty()
         val result = JsonArray()
-        var merged = false
+        var firstIndex = -1
         for (position in existing) {
             val copy = position.deepCopy()
-            val assortmentHref = copy.obj("assortment")?.href()
-            if (!merged && assortmentHref == productHref) {
-                val current = copy.get("quantity")?.asDouble ?: 0.0
-                copy.addProperty("quantity", current + quantity)
-                merged = true
+            if (copy.obj("assortment")?.href() != productHref) {
+                result.add(copy)
+                continue
             }
-            result.add(copy)
+            val current = copy.get("quantity")?.asDouble ?: 0.0
+            if (firstIndex < 0) {
+                copy.addProperty("quantity", current + quantity)
+                firstIndex = result.size()
+                result.add(copy)
+            } else {
+                // Дубли одной и той же позиции сворачиваем в первую строку, иначе товар
+                // попадает в документ несколько раз.
+                val first = result[firstIndex].asJsonObject
+                first.addProperty("quantity", (first.get("quantity")?.asDouble ?: 0.0) + current)
+            }
         }
-        if (!merged) {
+        if (firstIndex < 0) {
             result.add(JsonObject().apply {
                 add("assortment", JsonObject().apply { add("meta", product.obj("meta")) })
                 addProperty("quantity", quantity)
@@ -432,10 +460,13 @@ class DocumentRepository(private val api: MoySkladApi) {
      * из раскрытого объекта, а если его нет — из справочника `entity/uom` по id из ссылки.
      */
     private suspend fun uomName(element: JsonObject?): String {
-        if (element == null) return ""
-        element.str("name")?.takeIf { it.isNotBlank() }?.let { return it }
-        val href = element.href() ?: return ""
-        return uomDictionary()[href.substringAfterLast('/')].orEmpty()
+        element?.str("name")?.takeIf { it.isNotBlank() }?.let { return it }
+        val fromDictionary = element?.href()?.let { href ->
+            uomDictionary()[href.substringAfterLast('/')]
+        }.orEmpty()
+        // У товара без явно заданной единицы МойСклад подставляет базовую единицу учёта.
+        // Без этого «шт» не показывалось вообще: поле uom в ответе просто отсутствует.
+        return fromDictionary.ifBlank { DEFAULT_UOM }
     }
 
     /** Справочник единиц измерения грузим один раз за сессию. */
@@ -477,6 +508,7 @@ class DocumentRepository(private val api: MoySkladApi) {
         const val MAX_PAGES = 20
         const val ID_BATCH = 50
         const val UOM_LIMIT = 100
+        const val DEFAULT_UOM = "шт"
         val SYNC_ORDER = listOf(DocumentType.SUPPLY, DocumentType.LOSS, DocumentType.MOVE)
         val SEARCH_FIELDS = listOf("barcode", "code", "article")
         val BARCODE_FIELDS = listOf("ean13", "ean8", "code128", "gtin", "gtin13", "itf14")
